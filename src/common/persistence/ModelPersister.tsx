@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { get, set, del } from "idb-keyval";
-import { reaction } from "mobx";
+import { autorun, reaction, toJS } from "mobx";
 import { ZodType } from "zod";
 
 export interface PersistableModel<T> {
@@ -41,21 +41,20 @@ export const ModelPersister = <T,>({ model }: ModelPersisterProps<T>) => {
     };
   }, [model]);
 
-  useEffect(() => {
-    const { persistenceKey } = model;
-    // Persist data on change
-    const dispose = reaction(
-      () => JSON.stringify(model.persistableData),
-      (json) => {
-        const data = JSON.parse(json);
-        set(persistenceKey, data).catch((e) => {
-          console.error(`Failed to persist state for ${persistenceKey}`, e);
+  useEffect(() =>
+    autorun(
+      () => {
+        const persistableData = JSON.parse(
+          JSON.stringify(model.persistableData),
+        );
+        const key = model.persistenceKey;
+        set(key, persistableData).catch((e) => {
+          console.error(`Failed to persist state for ${key}`, e);
         });
       },
-      { delay: 500 }, // Debounce persistence
-    );
-    return dispose;
-  }, [model]);
+      { delay: 500 },
+    ),
+  );
 
   return null;
 };

@@ -7,6 +7,7 @@ export const SequencerPlayer = () => {
   useFrame(() => {
     if (!sequence.isPlaying) return;
     sequence.runtime.playhead.stepForwards();
+
     if (sequence.runtime.playhead.frame >= sequence.sequence.numFrames) {
       sequence.runtime.playhead.setFrame(0);
       sequence.runtime.incrementLoopCount();
