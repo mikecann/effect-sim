@@ -1,5 +1,9 @@
 import { ActionIcon, Divider, Group, Menu, Text } from "@mantine/core";
-import { IconEdit, IconExternalLink, IconChevronRight } from "@tabler/icons-react";
+import {
+  IconEdit,
+  IconExternalLink,
+  IconChevronRight,
+} from "@tabler/icons-react";
 import { useFlexLayout } from "./FlexLayoutProvider";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useMutation } from "convex/react";
@@ -22,7 +26,8 @@ export default function MenuBar() {
 
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showOpenProjectModal, setShowOpenProjectModal] = useState(false);
-  const [showProjectSettingsModal, setShowProjectSettingsModal] = useState(false);
+  const [showProjectSettingsModal, setShowProjectSettingsModal] =
+    useState(false);
 
   // const xx = useQuery(api.experiments3.listQueryFluentExtended, {});
   // console.log("XXXXX", xx ? xx.map((x) => x._id) : []);
@@ -143,7 +148,7 @@ export default function MenuBar() {
                   {project?.settings.lightsOnTop ? "✓ " : ""}Lights On Top
                 </Menu.Item>
                 <Divider my="sm" />
-                <Menu trigger="hover" positioning={{ placement: "right-start", offset: -5 }}>
+                <Menu trigger="hover" position="right-start">
                   <Menu.Target>
                     <Menu.Item rightSection={<IconChevronRight size={14} />}>
                       Camera Controls
@@ -212,8 +217,6 @@ export default function MenuBar() {
           </Group>
         </Group>
       </div>
-
-     
 
       <NewProjectModal
         opened={showNewProjectModal}

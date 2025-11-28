@@ -11,9 +11,7 @@ export function SimulatorControls() {
   const project = app.getProject();
 
   if (project.settings.cameraControl === "orbit")
-    return (
-      <OrbitControls enableDamping makeDefault enabled={!app.isMeasureMode} />
-    );
+    return <OrbitControls enableDamping makeDefault />;
 
   if (project.settings.cameraControl === "fly")
     return (
@@ -21,5 +19,7 @@ export function SimulatorControls() {
     );
 
   if (project.settings.cameraControl === "first_person")
-    return <FirstPersonControls makeDefault enabled={!app.isMeasureMode} />;
+    return (
+      <FirstPersonControls makeDefault autoForward={false} movementSpeed={10} />
+    );
 }
