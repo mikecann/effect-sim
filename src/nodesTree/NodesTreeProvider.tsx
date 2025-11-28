@@ -12,7 +12,7 @@ export function NodesTreeProvider() {
   return (
     <NodesTreeContext.Provider value={nodesTreeUIModel}>
       <NodesTreePanel />
-      <ModelPersister model={nodesTreeUIModel} />
+      {/* <ModelPersister model={nodesTreeUIModel} /> */}
     </NodesTreeContext.Provider>
   );
 }

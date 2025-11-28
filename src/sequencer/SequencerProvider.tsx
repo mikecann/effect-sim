@@ -19,7 +19,7 @@ export function SequencerProvider() {
   return (
     <SequencerContext.Provider value={sequencer}>
       <SequencerPanel />
-      <ModelPersister model={sequencer} />
+      {/* <ModelPersister model={sequencer} /> */}
     </SequencerContext.Provider>
   );
 }

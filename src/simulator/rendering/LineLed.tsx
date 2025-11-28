@@ -3,10 +3,38 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useMemo, useEffect } from "react";
 
 const vertexShader = `
+  uniform vec2 resolution;
   varying vec2 vUv;
   void main() {
     vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    
+    // Standard modelView transform
+    vec4 viewPos = modelViewMatrix * vec4(position, 1.0);
+    vec4 viewCenter = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    
+    vec4 clipPos = projectionMatrix * viewPos;
+    vec4 clipCenter = projectionMatrix * viewCenter;
+    
+    // Calculate screen space offset from center
+    vec2 ndcPos = clipPos.xy / clipPos.w;
+    vec2 ndcCenter = clipCenter.xy / clipCenter.w;
+    
+    vec2 ndcOffset = ndcPos - ndcCenter;
+    
+    // Convert to pixels (physical)
+    vec2 pixelOffset = ndcOffset * resolution * 0.5;
+    
+    // Check against minimum radius (4 pixels for 8x8 size)
+    float minRadius = 4.0;
+    float dist = length(pixelOffset);
+    
+    if (dist < minRadius && dist > 0.001) {
+      float scale = minRadius / dist;
+      vec2 newNdcOffset = ndcOffset * scale;
+      clipPos.xy = (ndcCenter + newNdcOffset) * clipPos.w;
+    }
+    
+    gl_Position = clipPos;
   }
 `;
 
@@ -93,7 +121,9 @@ export function LineLed({
   stringLedSize?: number;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const { camera } = useThree();
+  const camera = useThree((state) => state.camera);
+  const size = useThree((state) => state.size);
+  const dpr = useThree((state) => state.viewport.dpr);
 
   const material = useMemo(
     () =>
@@ -101,6 +131,9 @@ export function LineLed({
         uniforms: {
           ledColor: { value: new THREE.Color(0, 0, 0) },
           borderColor: { value: new THREE.Color(0, 0, 0) },
+          resolution: {
+            value: new THREE.Vector2(size.width * dpr, size.height * dpr),
+          },
         },
         vertexShader,
         fragmentShader,
@@ -109,6 +142,16 @@ export function LineLed({
       }),
     [lightsOnTop],
   );
+
+  // Update resolution uniform on resize
+  useEffect(() => {
+    if (material.uniforms.resolution) {
+      material.uniforms.resolution.value.set(
+        size.width * dpr,
+        size.height * dpr,
+      );
+    }
+  }, [size, dpr, material]);
 
   // Store material ref
   useEffect(() => {
