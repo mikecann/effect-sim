@@ -1,0 +1,15 @@
+/* FlexLayout visual overrides */
+.flexlayout__tabset-selected {
+  background-image: none !important;
+  background-color: var(--color-tabset-background-selected) !important;
+}
+
+.flexlayout__tabset-maximized {
+  background-image: none !important;
+  background-color: var(--color-tabset-background-maximized) !important;
+}
+
+.flexlayout__tabset_header {
+  box-shadow: none !important;
+}
+

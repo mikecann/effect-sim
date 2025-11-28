@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "effect-sim",
+  "main": "./worker/worker.ts",
+  "compatibility_date": "2024-12-01",
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+  },
+  "vars": {},
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+    },
+  },
+  "placement": {
+    "mode": "smart",
+  },
+}
