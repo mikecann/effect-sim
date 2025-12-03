@@ -7,35 +7,29 @@ export const String = ({ model }: { model: HWStringModel }) => {
   const [connection, setConnection] = useState<WLEDDDPConnection | null>(null);
 
   useEffect(() => {
-    let hasExited = false;
+    const abortController = new AbortController();
     let _connection: WLEDDDPConnection | null = null;
+    const host = model.string.ipAddress;
+    const port = model.string.port;
+    const name = model.string.name;
 
     createAndConnectWLEDDDP({
-      host: model.string.ipAddress,
-      port: model.string.port,
+      host,
+      port,
+      signal: abortController.signal,
     })
       .then((conn) => {
         _connection = conn;
-        if (hasExited) {
-          _connection?.close().catch(() => {
-            console.error(
-              `Error closing stale connection to '${model.string.name}'`,
-            );
-          });
-          return;
-        }
         setConnection(_connection);
       })
       .catch((e) => {
-        console.error(`Error connecting to '${model.string.name}': ${e}`);
+        console.error(`Error connecting to '${name}': ${e}`);
       });
 
     return () => {
-      hasExited = true;
+      abortController.abort();
       _connection?.close().catch((e) => {
-        console.error(
-          `Error closing connection to '${model.string.name}': ${e}`,
-        );
+        console.error(`Error closing connection to '${name}': ${e}`);
       });
     };
   }, [model.string.ipAddress, model.string.port]);
