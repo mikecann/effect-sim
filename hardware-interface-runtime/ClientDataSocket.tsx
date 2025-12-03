@@ -2,17 +2,12 @@
 import { useEffect } from "react";
 import type { WebSocket, RawData } from "ws";
 import { WebSocketServer } from "ws";
-import { Signal } from "../shared/Signal";
-import type { Id } from "../convex/_generated/dataModel";
+import { HWIRAppModel } from "./models/HWIRAppModel";
+import { Id } from "../convex/_generated/dataModel";
 
 const CONTROL_PORT = Number(process.env.BUN_WS_PORT ?? 8787);
 
-export const onFrameDataSignal = new Signal<{
-  forStringId: Id<"nodes">;
-  rgb: Uint8Array;
-}>();
-
-export const ClientDataSocket = () => {
+export const ClientDataSocket = ({ app }: { app: HWIRAppModel }) => {
   useEffect(() => {
     const wssControl = new WebSocketServer({ port: CONTROL_PORT });
 
@@ -35,10 +30,10 @@ export const ClientDataSocket = () => {
         if (u8.byteLength < end) return;
         const id = new TextDecoder().decode(u8.subarray(start, end));
         const rgbBytes = u8.subarray(end);
-        onFrameDataSignal.dispatch({
-          forStringId: id as Id<"nodes">,
-          rgb: rgbBytes,
-        });
+        
+        const string = app.stringsMap.get(id as Id<"nodes">);
+        if (!string) return;
+        string.onData.dispatch(rgbBytes);
       });
     });
     console.log(`WS listening on ws://localhost:${CONTROL_PORT}`);

@@ -99,9 +99,9 @@ export class WLEDDdp {
    * @returns Promise that resolves when brightness has been set
    */
   public async setBrightness(brightness: number): Promise<void> {
-    if (brightness < 0 || brightness > 255) 
+    if (brightness < 0 || brightness > 255)
       throw new Error("Brightness must be between 0 and 255");
-    
+
     await this.jsonClient.setBrightness(brightness);
   }
 
@@ -148,9 +148,7 @@ export class WLEDDdp {
       this._port,
       this._host,
       (error: Error | null, _bytes: number) => {
-        if (error !== null) 
-          console.error("Error sending packet:", error);
-        
+        if (error !== null) console.error("Error sending packet:", error);
       },
     );
   }

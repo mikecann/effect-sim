@@ -1,30 +1,29 @@
 import { useEffect, useState, startTransition } from "react";
 import { WLEDDdp } from "./wled-ddp";
-import { onFrameDataSignal } from "./ClientDataSocket";
-import type { Doc } from "../convex/_generated/dataModel";
-import { NodeDocOfKind } from "../convex/schema";
+import { HWStringModel } from "./models/HWStringModel";
 
-
-export const String = ({ string }: { string: NodeDocOfKind<"string"> }) => {
+export const String = ({ model }: { model: HWStringModel }) => {
   const [client, setClient] = useState<WLEDDdp | null>(null);
 
   useEffect(() => {
     const newClient = new WLEDDdp({
-      host: string.ipAddress,
-      port: string.port,
-      ledCount: string.ledCount,
+      host: model.string.ipAddress,
+      port: model.string.port,
+      ledCount: model.string.ledCount,
       autoTurnOn: true,
     });
     startTransition(() => {
       setClient(newClient);
     });
-  }, [string.ipAddress, string.port, string.ledCount]);
+  }, [model.string.ipAddress, model.string.port, model.string.ledCount]);
 
   useEffect(() => {
     if (!client) return;
-    console.log(`'${string.name}' brightness changed to ${string.brightness}`);
-    client.setBrightness(string.brightness);
-  }, [client, string.brightness, string.name]);
+    console.log(
+      `'${model.string.name}' brightness changed to ${model.string.brightness}`,
+    );
+    client.setBrightness(model.string.brightness);
+  }, [client, model.string.brightness, model.string.name]);
 
   useEffect(() => {
     if (!client) return;
@@ -36,12 +35,14 @@ export const String = ({ string }: { string: NodeDocOfKind<"string"> }) => {
 
   useEffect(
     () =>
-      onFrameDataSignal.add(({ forStringId, rgb }) => {
-        if (forStringId != string._id) return;
+      model.onData.add((rgb) => {
         if (!client) return;
+        console.log(
+          `Sending '${rgb.length}' bytes data to '${model.string.name}'`,
+        );
         client.send(rgb);
       }),
-    [client, string._id],
+    [client, model],
   );
 
   return null;

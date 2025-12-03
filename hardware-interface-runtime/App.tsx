@@ -1,65 +1,35 @@
-import { useMemo, useEffect } from "react";
 import { observer } from "mobx-react-lite";
-import { useQuery } from "convex/react";
-import { api } from "../convex/_generated/api";
-import type { Id, Doc } from "../convex/_generated/dataModel";
 import { ClientDataSocket } from "./ClientDataSocket";
 import { String } from "./String";
-import { ProjectModel } from "../shared/models/ProjectModel";
-import { LedDataStoreModel } from "../src/data/LedDataStoreModel";
 import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
 import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
 import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
 import { FixedFrameProvider } from "../src/common/FixedFrameProvider";
+import { useProjectModel } from "./hooks";
+import { HWIRAppModel } from "./models/HWIRAppModel";
 
-export const App = observer(
-  ({
-    project,
-    playlistId,
-  }: {
-    project: Doc<"projects">;
-    playlistId?: Id<"playlists">;
-  }) => {
-    const data = useQuery(api.model.getDataForProject, {
-      projectId: project._id,
-    });
+export const App = observer(({ app }: { app: HWIRAppModel }) => {
+  useProjectModel(app);
 
-    const projectModel = useMemo(() => new ProjectModel(project), [project]);
-    const ledDataStore = useMemo(
-      () => new LedDataStoreModel(projectModel),
-      [projectModel],
-    );
+  if (!app.dataStore) return null;
+  if (!app.project) return null;
 
-    useEffect(() => {
-      if (data) {
-        projectModel.updateFromServerData(data);
-      }
-    }, [data, projectModel]);
+  return (
+    <LedDataStoreContext.Provider value={app.dataStore}>
+      <FixedFrameProvider>
+        {app.strings.map((string) => (
+          <String key={string.string._id} model={string} />
+        ))}
 
-    const playlist = useMemo(() => {
-      if (!playlistId) return null;
-      return projectModel.playlists.find((p) => p._id === playlistId);
-    }, [projectModel, playlistId, projectModel.playlists.length]);
-
-    return (
-      <LedDataStoreContext.Provider value={ledDataStore}>
-        <FixedFrameProvider>
-          {/* Render Strings (Outputs) */}
-          {projectModel.strings.map((stringModel) => (
-            <String key={stringModel._id} string={stringModel.doc} />
-          ))}
-
-          {/* Logic */}
-          {playlistId && playlist ? (
-            <>
-              <HeadlessPlaylistPlayer playlist={playlist} />
-              <HeadlessLedDataDispatcher />
-            </>
-          ) : (
-            <ClientDataSocket />
-          )}
-        </FixedFrameProvider>
-      </LedDataStoreContext.Provider>
-    );
-  },
-);
+        {app.playlist ? (
+          <>
+            <HeadlessPlaylistPlayer playlist={app.playlist} />
+            <HeadlessLedDataDispatcher app={app} />
+          </>
+        ) : (
+          <ClientDataSocket app={app} />
+        )}
+      </FixedFrameProvider>
+    </LedDataStoreContext.Provider>
+  );
+});

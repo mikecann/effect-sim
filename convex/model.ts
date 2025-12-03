@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { FunctionReturnType } from "convex/server";
 import { api } from "./_generated/api";
+import { ensureFP } from "../shared/ensure";
 
 const operationValidator = v.union(
   v.object({
@@ -106,6 +107,16 @@ export const listStringsForProject = query({
 
 export const listProjects = query({
   handler: async (ctx) => ctx.db.query("projects").collect(),
+});
+
+export const getProject = query({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, { projectId }) =>
+    ctx.db
+      .get(projectId)
+      .then(ensureFP(`Project not found with id '${projectId}'`)),
 });
 
 export const getAppData = query({
