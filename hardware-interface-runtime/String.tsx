@@ -1,20 +1,55 @@
-import { useEffect, useState, startTransition } from "react";
-import { WLEDDDPConnectionModel } from "./models/WLED_DDPModel";
+import { useEffect, useState } from "react";
 import { HWStringModel } from "./models/HWStringModel";
-import { autorun, reaction } from "mobx";
+import { reaction } from "mobx";
+import { createAndConnectWLEDDDP, WLEDDDPConnection } from "./models/WLED_DDP";
 
 export const String = ({ model }: { model: HWStringModel }) => {
+  const [connection, setConnection] = useState<WLEDDDPConnection | null>(null);
+
   useEffect(() => {
-    if (!model.client) return;
+    let hasExited = false;
+    let _connection: WLEDDDPConnection | null = null;
+
+    createAndConnectWLEDDDP({
+      host: model.string.ipAddress,
+      port: model.string.port,
+    })
+      .then((conn) => {
+        _connection = conn;
+        if (hasExited) {
+          _connection?.close().catch(() => {
+            console.error(
+              `Error closing stale connection to '${model.string.name}'`,
+            );
+          });
+          return;
+        }
+        setConnection(_connection);
+      })
+      .catch((e) => {
+        console.error(`Error connecting to '${model.string.name}': ${e}`);
+      });
+
+    return () => {
+      hasExited = true;
+      _connection?.close().catch((e) => {
+        console.error(
+          `Error closing connection to '${model.string.name}': ${e}`,
+        );
+      });
+    };
+  }, [model.string.ipAddress, model.string.port]);
+
+  useEffect(() => {
+    if (!connection) return;
 
     const unlistenToData = model.onData.add((rgb) => {
-      if (model.client?.status != "connected") return;
       console.log(
         `Sending '${rgb.length}' bytes data to '${model.string.name}'`,
       );
-      model.client.send(rgb).catch(() => {
+      connection.send(rgb).catch((e) => {
         console.error(
-          `Error sending packet of ${rgb.length} bytes to '${model.string.name}'`,
+          `Error sending packet of ${rgb.length} bytes to '${model.string.name}': ${e}`,
         );
       });
     });
@@ -22,10 +57,9 @@ export const String = ({ model }: { model: HWStringModel }) => {
     const unlistenToBrightness = reaction(
       () => model.string.brightness,
       (brightness) => {
-        if (model.client?.status != "connected") return;
-        model.client.setBrightness(brightness).catch(() => {
+        connection.setBrightness(brightness).catch((e) => {
           console.error(
-            `Error setting brightness to ${brightness} for '${model.string.name}'`,
+            `Error setting brightness to ${brightness} for '${model.string.name}': ${e}`,
           );
         });
       },
@@ -34,11 +68,8 @@ export const String = ({ model }: { model: HWStringModel }) => {
     return () => {
       unlistenToData();
       unlistenToBrightness();
-      model.client?.close().catch(() => {
-        console.error(`Error closing connection to '${model.string.name}'`);
-      });
     };
-  }, [model.client]);
+  }, [connection]);
 
   return null;
 };

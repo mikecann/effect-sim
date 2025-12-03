@@ -1,4 +1,4 @@
-import type { Led } from "./models/WLED_DDPModel.js";
+type Led = [number, number, number];
 
 /**
  * Utility class for color-related mathematical calculations
