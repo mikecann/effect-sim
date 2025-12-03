@@ -1,4 +1,4 @@
-import type { Led } from './wled-ddp.js';
+import type { Led } from "./models/WLED_DDPModel.js";
 
 /**
  * Utility class for color-related mathematical calculations
@@ -24,22 +24,19 @@ export class ColorMath {
       g = 0,
       b = 0;
 
-    if (h >= 0 && h < 60) 
-      [r, g, b] = [c, x, 0];
-     else if (h >= 60 && h < 120) 
-      [r, g, b] = [x, c, 0];
-     else if (h >= 120 && h < 180) 
-      [r, g, b] = [0, c, x];
-     else if (h >= 180 && h < 240) 
-      [r, g, b] = [0, x, c];
-     else if (h >= 240 && h < 300) 
-      [r, g, b] = [x, 0, c];
-     else 
-      [r, g, b] = [c, 0, x];
-    
+    if (h >= 0 && h < 60) [r, g, b] = [c, x, 0];
+    else if (h >= 60 && h < 120) [r, g, b] = [x, c, 0];
+    else if (h >= 120 && h < 180) [r, g, b] = [0, c, x];
+    else if (h >= 180 && h < 240) [r, g, b] = [0, x, c];
+    else if (h >= 240 && h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
 
     // Convert to 0-255 range and return as LED tuple
-    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+    return [
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    ];
   }
 
   /**
@@ -54,7 +51,7 @@ export class ColorMath {
     count: number,
     shift: number = 0,
     saturation: number = 1,
-    value: number = 1
+    value: number = 1,
   ): readonly Led[] {
     const rainbow: Led[] = [];
 
