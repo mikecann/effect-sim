@@ -16,46 +16,45 @@ interface ModelPersisterProps<T> {
 }
 
 export const ModelPersister = <T,>({ model }: ModelPersisterProps<T>) => {
-  
   // Load persisted data on mount
-  useEffect(() => {
-    const { persistenceKey, persistenceSchema } = model;
-    let isMounted = true;
-    const loadData = async () => {
-      try {
-        const rawData = await get(persistenceKey);
-        if (isMounted && rawData) {
-          const data = persistenceSchema.parse(rawData);
-          model.restoreFromPersistableData(data);
-        }
-      } catch (e) {
-        console.warn(
-          `Failed to restore state for ${persistenceKey}, clearing persistence`,
-          e,
-        );
-        await del(persistenceKey);
-      }
-    };
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, [model]);
+  // useEffect(() => {
+  //   const { persistenceKey, persistenceSchema } = model;
+  //   let isMounted = true;
+  //   const loadData = async () => {
+  //     try {
+  //       const rawData = await get(persistenceKey);
+  //       if (isMounted && rawData) {
+  //         const data = persistenceSchema.parse(rawData);
+  //         model.restoreFromPersistableData(data);
+  //       }
+  //     } catch (e) {
+  //       console.warn(
+  //         `Failed to restore state for ${persistenceKey}, clearing persistence`,
+  //         e,
+  //       );
+  //       await del(persistenceKey);
+  //     }
+  //   };
+  //   loadData();
+  //   return () => {
+  //     isMounted = false;
+  //   };
+  // }, [model]);
 
-  useEffect(() =>
-    autorun(
-      () => {
-        const persistableData = JSON.parse(
-          JSON.stringify(model.persistableData),
-        );
-        const key = model.persistenceKey;
-        set(key, persistableData).catch((e) => {
-          console.error(`Failed to persist state for ${key}`, e);
-        });
-      },
-      { delay: 500 },
-    ),
-  );
+  // useEffect(() =>
+  //   autorun(
+  //     () => {
+  //       const persistableData = JSON.parse(
+  //         JSON.stringify(model.persistableData),
+  //       );
+  //       const key = model.persistenceKey;
+  //       set(key, persistableData).catch((e) => {
+  //         console.error(`Failed to persist state for ${key}`, e);
+  //       });
+  //     },
+  //     { delay: 500 },
+  //   ),
+  // );
 
   return null;
 };
