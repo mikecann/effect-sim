@@ -10,8 +10,8 @@ import { ensure } from "../shared/ensure";
 polyfillRAF();
 
 const convexUrl = ensure(
-  process.env.CONVEX_URL,
-  `missing CONVEX_URL environment variable`,
+  process.env.VITE_CONVEX_URL,
+  `missing VITE_CONVEX_URL environment variable`,
 ); // || `https://aromatic-cardinal-985.convex.cloud`;
 
 const { projectId, playlistId } = await runSetupCLI(convexUrl);
