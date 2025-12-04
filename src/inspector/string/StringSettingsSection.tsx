@@ -5,7 +5,6 @@ import {
   TextInput,
   NumberInput,
   Slider,
-  RangeSlider,
   Group,
   Button,
   Popover,
@@ -77,8 +76,6 @@ export default function StringSettingsSection({
   const port = node.port ?? 4048;
   const ledCount = node.ledCount ?? 50;
   const brightness = node.brightness ?? 128;
-
-  const [range, setRange] = useState<[number, number]>([0, ledCount]);
 
   return (
     <Stack pt="xs" gap="xs">
@@ -170,45 +167,6 @@ export default function StringSettingsSection({
           }}
         />
       </Stack>
-
-      <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          Random Color Range
-        </Text>
-        <RangeSlider
-          min={0}
-          max={ledCount}
-          step={1}
-          minRange={1}
-          value={range}
-          onChange={setRange}
-          label={(val) => `${val}`}
-        />
-      </Stack>
-
-      <Button
-        variant="light"
-        disabled={!ipAddress}
-        onClick={() => {
-          if (!ipAddress) return;
-          const r = Math.floor(Math.random() * 256);
-          const g = Math.floor(Math.random() * 256);
-          const b = Math.floor(Math.random() * 256);
-          const [start, end] = range;
-
-          fetch(`http://${ipAddress}/json/state`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              seg: {
-                i: [0, ledCount, [0, 0, 0], start, end, [r, g, b]],
-              },
-            }),
-          }).catch((e) => console.error("Failed to set random color", e));
-        }}
-      >
-        Set Random Color
-      </Button>
 
       {appModel.placingStringId === node._id ? (
         <Button color="red" onClick={() => appModel.cancelPlacingString()}>

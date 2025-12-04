@@ -13,6 +13,7 @@ import WelcomeModal from "./common/projects/WelcomeModal";
 import { LedDataStoreProvider } from "./data/LedDataStoreProvider.tsx";
 import { HardwareInterfaceRuntimeAutoconnector } from "./common/hardware-interface/HardwareInterfaceRuntimeAutoconnector.tsx";
 import { AppModelPersister } from "./common/models/AppModelPersister.tsx";
+import { StringSegmentRangeInstantIndicator } from "./inspector/virtualString/StringSegmentRangeInstantIndicator.tsx";
 
 export default function App() {
   const app = useApp();
@@ -56,6 +57,9 @@ export default function App() {
         </div>
         <Notifications />
         <LedDataDispatcher />
+
+        <StringSegmentRangeInstantIndicator />
+
         <HardwareInterfaceRuntimeAutoconnector />
         <AppModelPersister />
       </LedDataStoreProvider>
