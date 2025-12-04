@@ -25,6 +25,13 @@ export const useProjectModel = (model: HWIRAppModel) => {
 
   useEffect(() => {
     if (!model.project) return;
+    if (!projectDoc) return;
+    model.project.updateSettings(projectDoc.settings);
+    model.project.setName(projectDoc.name);
+  }, [model.project, projectDoc]);
+
+  useEffect(() => {
+    if (!model.project) return;
     if (!projectData) return;
     model.project.updateFromServerData(projectData);
   }, [model.project, projectData]);

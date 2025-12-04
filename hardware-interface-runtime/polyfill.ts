@@ -1,5 +1,3 @@
-
-
 export const polyfillRAF = () => {
   if (!globalThis.requestAnimationFrame) {
     let lastTime = 0;
@@ -11,4 +9,6 @@ export const polyfillRAF = () => {
       return id as unknown as number;
     };
   }
+  if (!globalThis.cancelAnimationFrame)
+    globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 };
