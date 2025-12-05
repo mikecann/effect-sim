@@ -65,7 +65,9 @@ export default function App() {
         <Notifications />
         <LedDataDispatcher />
 
-        <StringSegmentRangeInstantIndicator />
+        {import.meta.env.VITE_IS_DEV_MODE ? (
+          <StringSegmentRangeInstantIndicator />
+        ) : null}
 
         <HardwareInterfaceRuntimeAutoconnector />
       </LedDataStoreProvider>
