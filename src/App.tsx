@@ -5,14 +5,14 @@ import type { TabNode } from "flexlayout-react";
 import { Layout } from "flexlayout-react";
 import MenuBar from "./common/MenuBar";
 import InspectorPanel from "./inspector/InspectorPanel.tsx";
-import { SequencerProvider } from "./sequencer/SequencerProvider";
-import { NodesTreeProvider } from "./nodesTree/NodesTreeProvider.tsx";
 import PlaylistsPanel from "./playlists/PlaylistsPanel";
 import { useApp } from "./common/AppContext.tsx";
 import WelcomeModal from "./common/projects/WelcomeModal";
 import { LedDataStoreProvider } from "./data/LedDataStoreProvider.tsx";
 import { HardwareInterfaceRuntimeAutoconnector } from "./common/hardware-interface/HardwareInterfaceRuntimeAutoconnector.tsx";
 import { StringSegmentRangeInstantIndicator } from "./inspector/virtualString/StringSegmentRangeInstantIndicator.tsx";
+import SequencerPanel from "./sequencer/SequencerPanel.tsx";
+import NodesTreePanel from "./nodesTree/NodesTreePanel.tsx";
 
 export default function App() {
   const app = useApp();
@@ -43,10 +43,19 @@ export default function App() {
               factory={(node: TabNode) => {
                 const component = node.getComponent();
                 if (component === "simulator") return <SimulatorProvider />;
-                if (component === "nodes") return <NodesTreeProvider />;
+                if (component === "nodes") {
+                  const model = app.findNodesTreeById(node.getId());
+                  if (!model) return null;
+                  return <NodesTreePanel model={model} />;
+                }
                 if (component === "playlists") return <PlaylistsPanel />;
                 if (component === "inspector") return <InspectorPanel />;
-                if (component === "sequencer") return <SequencerProvider />;
+                if (component === "sequencer") {
+                  const model = app.findSequencerById(node.getId());
+                  if (!model) return null;
+                  return <SequencerPanel sequencer={model} />;
+                }
+
                 return null;
               }}
               onAction={(action) => action}

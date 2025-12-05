@@ -8,15 +8,18 @@ import { iife } from "../../../shared/misc";
 export class SequencerPanelUIModel {
   sequence: SequenceUIModel | null = null;
 
-  constructor(public readonly app: AppModel) {
+  constructor(
+    public readonly app: AppModel,
+    public readonly id: string,
+  ) {
     makeAutoObservable(this);
 
-    const persistedData = app.persistedData.sequencers?.[0];
+    const persistedData = app.persistedData.sequencers?.[id];
     if (persistedData?.selectedSequenceId)
       this.setSelectedSequence(persistedData.selectedSequenceId);
   }
 
-  get id() {
+  get selectedSequenceId() {
     return this.sequence?.sequence._id ?? null;
   }
 

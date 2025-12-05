@@ -1,5 +1,7 @@
 import type { IJsonModel } from "flexlayout-react";
 
+export type TabComponentKinds = "simulator" | "nodes" | "playlists" | "inspector" | "sequencer";
+
 export const defaultLayoutJson: IJsonModel = {
   global: { splitterSize: 6 },
   borders: [],

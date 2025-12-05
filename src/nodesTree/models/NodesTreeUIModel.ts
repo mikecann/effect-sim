@@ -27,12 +27,15 @@ export class NodesTreeUIModel {
   overId: UniqueIdentifier | null = null;
   offsetLeft = 0;
 
-  constructor(public readonly app: AppModel) {
+  constructor(
+    public readonly app: AppModel,
+    public readonly id: string,
+  ) {
     makeAutoObservable(this, {
       app: false,
     });
 
-    const persistedData = app.persistedData.nodesTrees?.[0];
+    const persistedData = app.persistedData.nodesTrees?.[id];
     this.expandedItems = persistedData?.expandedItems ?? [];
   }
 

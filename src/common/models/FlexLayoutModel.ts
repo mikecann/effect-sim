@@ -1,7 +1,12 @@
 import { makeAutoObservable, observable } from "mobx";
-import type { IJsonModel } from "flexlayout-react";
+import type {
+  IJsonModel,
+  IJsonRowNode,
+  IJsonTabSetNode,
+  IJsonTabNode,
+} from "flexlayout-react";
 import { Model, Actions, DockLocation } from "flexlayout-react";
-import { defaultLayoutJson } from "../tabs";
+import { defaultLayoutJson, TabComponentKinds } from "../tabs";
 import { AppModel } from "./AppModel";
 
 export const INSPECTOR_TAB_ID = "tab-inspector";
@@ -14,23 +19,60 @@ export class FlexLayoutModel {
   modelJson: IJsonModel | null = null;
 
   constructor(app: AppModel) {
-    this.model = Model.fromJson(defaultLayoutJson);
+    this.model = Model.fromJson(
+      app.persistedData.flex?.model
+        ? app.persistedData.flex?.model
+        : defaultLayoutJson,
+    );
+    this.modelJson = this.model.toJson();
     makeAutoObservable(this, {
       model: observable.ref,
     });
-    if (app.persistedData.flex?.model)
-      this.setLayoutFromJson(app.persistedData.flex.model);
   }
+
+  get nodesById() {
+    const map = new Map<
+      string,
+      IJsonRowNode | IJsonTabSetNode | IJsonTabNode
+    >();
+    if (!this.modelJson) return map;
+
+    const traverse = (node: IJsonRowNode | IJsonTabSetNode | IJsonTabNode) => {
+      if (node.id) map.set(node.id, node);
+      if ("children" in node && node.children)
+        (
+          node.children as (IJsonRowNode | IJsonTabSetNode | IJsonTabNode)[]
+        ).forEach(traverse);
+    };
+
+    traverse(this.modelJson.layout);
+
+    return map;
+  }
+
+  get nodesByComponent() {
+    const map = new Map<TabComponentKinds, IJsonTabNode[]>();
+
+    for (const node of this.nodesById.values()) {
+      if (node.type !== "tab") continue;
+      const tabNode = node as IJsonTabNode;
+      if (!tabNode.component) continue;
+
+      const list = map.get(tabNode.component as TabComponentKinds) ?? [];
+      list.push(tabNode);
+      map.set(tabNode.component as TabComponentKinds, list);
+    }
+
+    return map;
+  }
+
+  
 
   setModel(nextModel: Model) {
     this.model = nextModel;
     const json = this.model.toJson();
     console.log("FlexLayoutModel changed", json);
     this.modelJson = json;
-  }
-
-  setLayoutFromJson(layoutJson: IJsonModel) {
-    this.setModel(Model.fromJson(layoutJson));
   }
 
   resetLayout() {

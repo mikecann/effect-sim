@@ -3,11 +3,15 @@ import type * as THREE from "three";
 import { Doc, Id } from "../../../convex/_generated/dataModel";
 import { ProjectModel } from "../../../shared/models/ProjectModel";
 import { exhaustiveCheck } from "../../../shared/misc";
-import { AllNodeModels } from "../../../shared/models/types";
+import {
+  AllNodeModels,
+  createTempId,
+  createId,
+} from "../../../shared/models/types";
 import { VirtualStringNodeModel } from "../../../shared/models/VirtualStringNodeModel";
 import { StringNodeModel } from "../../../shared/models/StringNodeModel";
 import { SimulatorModel } from "../../simulator/models/SimulatorModel";
-import type { SequencerPanelUIModel } from "../../sequencer/models/SequencerPanelUIModel";
+import { SequencerPanelUIModel } from "../../sequencer/models/SequencerPanelUIModel";
 import type { SequenceModel } from "../../../shared/models/sequencer/SequenceModel";
 import type { TrackModel } from "../../../shared/models/sequencer/TrackModel";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
@@ -37,8 +41,6 @@ export class AppModel {
   placingStringId: Id<"nodes"> | null = null;
   selectedEntity: SelectedEntity = null;
   simulators: SimulatorModel[] = [];
-  sequencers: SequencerPanelUIModel[] = [];
-  nodesTrees: NodesTreeUIModel[] = [];
   gardenModel: THREE.Object3D | null = null;
   projects: ProjectModel[] = [];
   hardwareInterfaceRuntime: HardwareInterfaceRuntimeModel;
@@ -54,6 +56,29 @@ export class AppModel {
     this.currentProjectId = persistedData.app?.currentProjectId ?? null;
   }
 
+  get sequencers() {
+    const sequencers = this.flex.nodesByComponent.get("sequencer") ?? [];
+    return sequencers.map(
+      (sequencer) =>
+        new SequencerPanelUIModel(this, sequencer.id ?? createId()),
+    );
+  }
+
+  findSequencerById(id: string) {
+    return this.sequencers.find((sequencer) => sequencer.id === id);
+  }
+
+  get nodesTrees() {
+    const sequencers = this.flex.nodesByComponent.get("nodes") ?? [];
+    return sequencers.map(
+      (sequencer) => new NodesTreeUIModel(this, sequencer.id ?? createId()),
+    );
+  }
+
+  findNodesTreeById(id: string) {
+    return this.nodesTrees.find((nodesTree) => nodesTree.id === id);
+  }
+
   get persistableData() {
     return {
       app: {
@@ -65,12 +90,24 @@ export class AppModel {
       flex: {
         model: this.flex.modelJson,
       },
-      sequencers: this.sequencers.map((sequencer) => ({
-        selectedSequenceId: sequencer.sequence?.sequence._id ?? null,
-      })),
-      nodesTrees: this.nodesTrees.map((nodesTree) => ({
-        expandedItems: nodesTree.expandedItems,
-      })),
+      sequencers: this.sequencers.reduce(
+        (acc, sequencer) => {
+          acc[sequencer.id] = {
+            selectedSequenceId: sequencer.selectedSequenceId,
+          };
+          return acc;
+        },
+        {} as Record<string, { selectedSequenceId: Id<"sequences"> | null }>,
+      ),
+      nodesTrees: this.nodesTrees.reduce(
+        (acc, nodesTree) => {
+          acc[nodesTree.id] = {
+            expandedItems: nodesTree.expandedItems,
+          };
+          return acc;
+        },
+        {} as Record<string, { expandedItems: string[] }>,
+      ),
     };
   }
 

@@ -5,8 +5,10 @@ import { NodesTreeDeleteAction } from "./NodesTreeDeleteAction";
 import { NodesTreeAddMenu } from "./NodesTreeAddMenu";
 import { useDeleteSelectedNodes } from "./useDeleteSelectedNodes";
 import { isKeyboardEventFromEditable } from "../common/utils/keyboard";
+import { NodesTreeUIModel } from "./models/NodesTreeUIModel";
+import { NodesTreeContext } from "./NodesTreeContext";
 
-export default function NodesTreePanel() {
+export default function NodesTreePanel({ model }: { model: NodesTreeUIModel }) {
   const { deleteSelectedNodes, hasSelection } = useDeleteSelectedNodes();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export default function NodesTreePanel() {
   }, [hasSelection, deleteSelectedNodes]);
 
   return (
-    <>
+    <NodesTreeContext value={model}>
       <Stack ref={panelRef} gap="0" style={{ height: "100%" }} tabIndex={-1}>
         <Group
           bg="var(--mantine-color-dark-6)"
@@ -57,6 +59,6 @@ export default function NodesTreePanel() {
           <NodesTree />
         </Stack>
       </Stack>
-    </>
+    </NodesTreeContext>
   );
 }
