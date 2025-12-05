@@ -18,34 +18,22 @@ import {
 } from "../../common/TreeDataProvider/treeUtilities";
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import { Id } from "../../../convex/_generated/dataModel";
-import { z } from "zod";
-import { PersistableModel } from "../../common/persistence/ModelPersister";
 
 const INDENTATION_WIDTH = 20;
 
-export const NodesTreePersistableDataSchema = z.object({
-  expandedItems: z.array(z.string()),
-});
-
-export type NodesTreePersistableData = z.infer<
-  typeof NodesTreePersistableDataSchema
->;
-
-export class NodesTreeUIModel
-  implements PersistableModel<NodesTreePersistableData>
-{
+export class NodesTreeUIModel {
   expandedItems: string[] = [];
   activeId: UniqueIdentifier | null = null;
   overId: UniqueIdentifier | null = null;
   offsetLeft = 0;
 
-  persistenceKey = "nodes-tree-persistence-v1";
-  persistenceSchema = NodesTreePersistableDataSchema;
-
   constructor(public readonly app: AppModel) {
     makeAutoObservable(this, {
       app: false,
     });
+
+    const persistedData = app.persistedData.nodesTrees?.[0];
+    this.expandedItems = persistedData?.expandedItems ?? [];
   }
 
   get project() {
@@ -254,15 +242,5 @@ export class NodesTreeUIModel
     }
 
     return targetIndex;
-  }
-
-  get persistableData(): NodesTreePersistableData {
-    return {
-      expandedItems: this.expandedItems,
-    };
-  }
-
-  restoreFromPersistableData(data: NodesTreePersistableData): void {
-    this.expandedItems = data.expandedItems;
   }
 }

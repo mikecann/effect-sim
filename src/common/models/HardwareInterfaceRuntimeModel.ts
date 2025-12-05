@@ -1,4 +1,5 @@
 import { makeAutoObservable } from "mobx";
+import { AppModel } from "./AppModel";
 
 const defaultWsUrl = (() => {
   const host =
@@ -23,8 +24,9 @@ export class HardwareInterfaceRuntimeModel {
   readonly wsUrl: string;
   lastError: string | null = null;
 
-  constructor(url?: string) {
+  constructor(app: AppModel, url?: string) {
     makeAutoObservable(this);
+    this.autoconnect = app.persistedData.hardwareInterfaceRuntime?.autoconnect ?? true;
     this.wsUrl = url ?? WS_URL;
     this.connect();
   }

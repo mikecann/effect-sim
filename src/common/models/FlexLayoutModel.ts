@@ -2,6 +2,7 @@ import { makeAutoObservable, observable } from "mobx";
 import type { IJsonModel } from "flexlayout-react";
 import { Model, Actions, DockLocation } from "flexlayout-react";
 import { defaultLayoutJson } from "../tabs";
+import { AppModel } from "./AppModel";
 
 export const INSPECTOR_TAB_ID = "tab-inspector";
 export const STRINGS_TAB_ID = "tab-strings";
@@ -10,13 +11,15 @@ export const PLAYLISTS_TAB_ID = "tab-playlists";
 
 export class FlexLayoutModel {
   model: Model;
-  modelJson: IJsonModel | null = null;;
+  modelJson: IJsonModel | null = null;
 
-  constructor() {
+  constructor(app: AppModel) {
     this.model = Model.fromJson(defaultLayoutJson);
     makeAutoObservable(this, {
       model: observable.ref,
     });
+    if (app.persistedData.flex?.model)
+      this.setLayoutFromJson(app.persistedData.flex.model);
   }
 
   setModel(nextModel: Model) {

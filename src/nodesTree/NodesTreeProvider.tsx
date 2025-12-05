@@ -3,7 +3,6 @@ import { NodesTreeUIModel } from "./models/NodesTreeUIModel";
 import { useApp } from "../common/AppContext";
 import NodesTreePanel from "./NodesTreePanel";
 import { NodesTreeContext } from "./NodesTreeContext";
-import { ModelPersister } from "../common/persistence/ModelPersister";
 
 export function NodesTreeProvider() {
   const app = useApp();
@@ -12,7 +11,6 @@ export function NodesTreeProvider() {
   return (
     <NodesTreeContext.Provider value={nodesTreeUIModel}>
       <NodesTreePanel />
-      <ModelPersister model={nodesTreeUIModel} />
     </NodesTreeContext.Provider>
   );
 }

@@ -4,35 +4,20 @@ import type { SequenceModel } from "../../../shared/models/sequencer/SequenceMod
 import { Id } from "../../../convex/_generated/dataModel";
 import { SequenceUIModel } from "./SequenceUIModel";
 import { iife } from "../../../shared/misc";
-import { z } from "zod";
-import { PersistableModel } from "../../common/persistence/ModelPersister";
 
-export const SequencerPanelPersistableDataSchema = z.object({
-  selectedSequenceId: z
-    .string()
-    .nullable()
-    .transform((val) => val as Id<"sequences"> | null),
-});
-
-export type SequencerPanelPersistableData = z.infer<
-  typeof SequencerPanelPersistableDataSchema
->;
-
-export class SequencerPanelUIModel
-  implements PersistableModel<SequencerPanelPersistableData>
-{
+export class SequencerPanelUIModel {
   sequence: SequenceUIModel | null = null;
 
   constructor(public readonly app: AppModel) {
     makeAutoObservable(this);
+
+    const persistedData = app.persistedData.sequencers?.[0];
+    if (persistedData?.selectedSequenceId)
+      this.setSelectedSequence(persistedData.selectedSequenceId);
   }
 
-  get persistenceKey(): string {
-    return "sequencer-panel-persistence-v1";
-  }
-
-  get persistenceSchema() {
-    return SequencerPanelPersistableDataSchema;
+  get id() {
+    return this.sequence?.sequence._id ?? null;
   }
 
   setSelectedSequence(sequence: Id<"sequences"> | SequenceModel | null) {
@@ -59,15 +44,5 @@ export class SequencerPanelUIModel
     if (!this.app.project) return;
     if (this.app.project.sequences.length === 0) return;
     this.setSelectedSequence(this.app.project.sequences[0]);
-  }
-
-  get persistableData(): SequencerPanelPersistableData {
-    return {
-      selectedSequenceId: this.sequence?.sequence._id ?? null,
-    };
-  }
-
-  restoreFromPersistableData(data: SequencerPanelPersistableData): void {
-    this.setSelectedSequence(data.selectedSequenceId);
   }
 }

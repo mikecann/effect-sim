@@ -14,8 +14,7 @@ import type { AllTrackEventModels } from "../../../shared/models/sequencer";
 import type { PlaylistModel } from "../../../shared/models/PlaylistModel";
 import { HardwareInterfaceRuntimeModel } from "./HardwareInterfaceRuntimeModel";
 import { FlexLayoutModel } from "./FlexLayoutModel";
-import { z } from "zod";
-import { PersistableModel } from "../persistence/ModelPersister";
+import { NodesTreeUIModel } from "../../nodesTree/models/NodesTreeUIModel";
 
 export type SelectedEntity =
   | { kind: "node"; node: AllNodeModels }
@@ -30,52 +29,49 @@ export type SelectedEntity =
   | { kind: "playlist"; playlist: PlaylistModel }
   | null;
 
-export const AppPersistableDataSchema = z.object({
-  currentProjectId: z
-    .string()
-    .nullable()
-    .transform((val) => val as Id<"projects"> | null),
-  isMeasureMode: z.boolean(),
-  placingStringId: z
-    .string()
-    .nullable()
-    .transform((val) => val as Id<"nodes"> | null),
-  hardwareInterfaceRuntime: z
-    .object({
-      autoconnect: z.boolean().optional(),
-    })
-    .optional(),
-  flexLayout: z.any().optional(),
-});
+type AppPersistedData = AppModel["persistableData"];
 
-export type AppPersistableData = z.infer<typeof AppPersistableDataSchema>;
-
-export class AppModel implements PersistableModel<AppPersistableData> {
+export class AppModel {
   currentProjectId: Id<"projects"> | null = null;
   isMeasureMode = false;
   placingStringId: Id<"nodes"> | null = null;
   selectedEntity: SelectedEntity = null;
   simulators: SimulatorModel[] = [];
   sequencers: SequencerPanelUIModel[] = [];
+  nodesTrees: NodesTreeUIModel[] = [];
   gardenModel: THREE.Object3D | null = null;
   projects: ProjectModel[] = [];
-  hardwareInterfaceRuntime = new HardwareInterfaceRuntimeModel();
+  hardwareInterfaceRuntime: HardwareInterfaceRuntimeModel;
   flex: FlexLayoutModel;
 
-  constructor() {
-    this.flex = new FlexLayoutModel();
+  constructor(readonly persistedData: Partial<AppPersistedData> = {}) {
+    this.hardwareInterfaceRuntime = new HardwareInterfaceRuntimeModel(this);
+    this.flex = new FlexLayoutModel(this);
     makeAutoObservable(this, {
       gardenModel: observable.ref,
+      persistedData: false,
     });
+    this.currentProjectId = persistedData.app?.currentProjectId ?? null;
   }
 
-  get persistenceKey(): string {
-    return "app-model-persistence-v1";
-  }
-
-  get persistenceSchema() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return AppPersistableDataSchema as any;
+  get persistableData() {
+    return {
+      app: {
+        currentProjectId: this.currentProjectId,
+      },
+      hardwareInterfaceRuntime: {
+        autoconnect: this.hardwareInterfaceRuntime.autoconnect,
+      },
+      flex: {
+        model: this.flex.modelJson,
+      },
+      sequencers: this.sequencers.map((sequencer) => ({
+        selectedSequenceId: sequencer.sequence?.sequence._id ?? null,
+      })),
+      nodesTrees: this.nodesTrees.map((nodesTree) => ({
+        expandedItems: nodesTree.expandedItems,
+      })),
+    };
   }
 
   addSimulator(simulator: SimulatorModel) {
@@ -206,28 +202,5 @@ export class AppModel implements PersistableModel<AppPersistableData> {
   requireCurrentProjectId(): Id<"projects"> {
     if (!this.currentProjectId) throw new Error("No current project selected");
     return this.currentProjectId;
-  }
-
-  get persistableData(): AppPersistableData {
-    return {
-      currentProjectId: this.currentProjectId,
-      isMeasureMode: this.isMeasureMode,
-      placingStringId: this.placingStringId,
-      hardwareInterfaceRuntime: {
-        autoconnect: this.hardwareInterfaceRuntime.autoconnect,
-      },
-      flexLayout: this.flex.modelJson,
-    };
-  }
-
-  restoreFromPersistableData(data: AppPersistableData) {
-    this.currentProjectId = data.currentProjectId;
-    this.isMeasureMode = data.isMeasureMode;
-    this.placingStringId = data.placingStringId;
-    if (data.hardwareInterfaceRuntime?.autoconnect !== undefined)
-      this.hardwareInterfaceRuntime.setAutoconnect(
-        data.hardwareInterfaceRuntime.autoconnect,
-      );
-    if (data.flexLayout) this.flex.setLayoutFromJson(data.flexLayout);
   }
 }

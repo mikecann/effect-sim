@@ -12,7 +12,6 @@ import { useApp } from "./common/AppContext.tsx";
 import WelcomeModal from "./common/projects/WelcomeModal";
 import { LedDataStoreProvider } from "./data/LedDataStoreProvider.tsx";
 import { HardwareInterfaceRuntimeAutoconnector } from "./common/hardware-interface/HardwareInterfaceRuntimeAutoconnector.tsx";
-import { AppModelPersister } from "./common/models/AppModelPersister.tsx";
 import { StringSegmentRangeInstantIndicator } from "./inspector/virtualString/StringSegmentRangeInstantIndicator.tsx";
 
 export default function App() {
@@ -22,7 +21,6 @@ export default function App() {
     return (
       <>
         <WelcomeModal />
-        <AppModelPersister />
       </>
     );
 
@@ -61,7 +59,6 @@ export default function App() {
         <StringSegmentRangeInstantIndicator />
 
         <HardwareInterfaceRuntimeAutoconnector />
-        <AppModelPersister />
       </LedDataStoreProvider>
     </>
   );
