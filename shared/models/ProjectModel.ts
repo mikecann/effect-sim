@@ -289,10 +289,12 @@ export class ProjectModel {
     name,
     parentId = null,
     ipAddress = "192.168.2.58",
+    apiType = "athom_type1",
   }: {
     name?: string;
     parentId?: Id<"nodes"> | null;
     ipAddress?: string;
+    apiType?: "athom_type1" | "athom_type2";
   } = {}) {
     const order = this.getMaxOrderForParent(parentId) + 1;
 
@@ -326,6 +328,7 @@ export class ProjectModel {
         icon: { kind: "emoji", emoji: iconEmoji },
         ipAddress,
         isOn: null,
+        apiType,
       } as Extract<Doc<"nodes">, { kind: "switch" }>,
       this,
     );

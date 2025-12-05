@@ -51,6 +51,10 @@ export class SwitchNodeModel {
     return this.doc.isOn;
   }
 
+  get apiType() {
+    return this.doc.apiType;
+  }
+
   setName(name: string) {
     this.doc.name = name;
   }
@@ -63,6 +67,10 @@ export class SwitchNodeModel {
     this.doc.ipAddress = ipAddress;
   }
 
+  setApiType(apiType: "athom_type1" | "athom_type2") {
+    this.doc.apiType = apiType;
+  }
+
   setStatus(isOn: boolean | null) {
     this.doc.isOn = isOn;
   }
@@ -71,15 +79,18 @@ export class SwitchNodeModel {
     name,
     icon,
     ipAddress,
+    apiType,
   }: {
     name?: string;
     icon?: Icon;
     ipAddress?: string;
+    apiType?: "athom_type1" | "athom_type2";
   }) {
     const doc = this.doc;
     if (name !== undefined) doc.name = name;
     if (icon !== undefined) doc.icon = icon;
     if (ipAddress !== undefined) doc.ipAddress = ipAddress;
+    if (apiType !== undefined) doc.apiType = apiType;
   }
 
   remove() {
@@ -87,8 +98,15 @@ export class SwitchNodeModel {
     this.project.removeNode(this);
   }
 
+  get baseUrl() {
+    const ip = this.ipAddress;
+    const type = this.apiType ?? "athom_type1";
+    if (type === "athom_type2") return `http://${ip}/switch/switch`;
+    return `http://${ip}/switch/smart_plug_v2`;
+  }
+
   async turnOn() {
-    const url = `http://${this.doc.ipAddress}/switch/smart_plug_v2/turn_on`;
+    const url = `${this.baseUrl}/turn_on`;
 
     const response = await fetch(url, { method: "POST" });
 
@@ -101,7 +119,7 @@ export class SwitchNodeModel {
   }
 
   async turnOff() {
-    const url = `http://${this.doc.ipAddress}/switch/smart_plug_v2/turn_off`;
+    const url = `${this.baseUrl}/turn_off`;
 
     const response = await fetch(url, { method: "POST" });
 
@@ -114,7 +132,7 @@ export class SwitchNodeModel {
   }
 
   async toggle() {
-    const url = `http://${this.doc.ipAddress}/switch/smart_plug_v2/toggle`;
+    const url = `${this.baseUrl}/toggle`;
 
     const response = await fetch(url, { method: "POST" });
 
@@ -128,7 +146,9 @@ export class SwitchNodeModel {
   }
 
   async refreshStatus() {
-    const url = `http://${this.doc.ipAddress}/switch/smart_plug_v2/`;
+    // For type2, assuming /switch/switch/ or similar returns JSON with state
+    // This might need adjustment if type2 has a different status endpoint
+    const url = `${this.baseUrl}/`;
 
     const response = await fetch(url, { method: "GET" });
 

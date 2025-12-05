@@ -79,6 +79,9 @@ export const switchNodeFields = {
   icon: iconValidator,
   ipAddress: v.string(),
   isOn: v.union(v.boolean(), v.null()),
+  apiType: v.optional(
+    v.union(v.literal("athom_type1"), v.literal("athom_type2")),
+  ),
 };
 
 export const segmentValidator = v.object({
