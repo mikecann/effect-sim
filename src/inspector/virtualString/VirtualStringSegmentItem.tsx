@@ -1,4 +1,4 @@
-import { Button, Group, RangeSlider, Select, Stack, Text } from "@mantine/core";
+import { Button, Group, RangeSlider, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useApp } from "../../common/AppContext";
@@ -70,6 +70,16 @@ export function VirtualStringSegmentItem({
             }}
             renderOption={(item) => <div>{item.option.label}</div>}
             style={{ flex: 1, maxWidth: "200px" }}
+          />
+        </Group>
+
+        <Group justify="space-between" align="center">
+          <Text size="sm" fw={500}>
+            Reverse
+          </Text>
+          <Switch
+            checked={segmentModel.isReversed ?? false}
+            onChange={() => segmentModel.toggleReversed()}
           />
         </Group>
 

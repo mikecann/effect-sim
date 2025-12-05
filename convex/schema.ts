@@ -88,6 +88,7 @@ export const segmentValidator = v.object({
   nodeId: v.id("nodes"),
   fromIndex: v.number(),
   toIndex: v.number(),
+  isReversed: v.optional(v.boolean()),
 });
 
 export const virtualStringNodeFields = {

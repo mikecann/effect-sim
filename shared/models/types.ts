@@ -32,4 +32,5 @@ export type Segment = {
   nodeId: Id<"nodes">;
   fromIndex: number;
   toIndex: number;
+  isReversed?: boolean;
 };

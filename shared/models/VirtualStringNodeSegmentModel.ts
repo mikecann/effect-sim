@@ -27,6 +27,10 @@ export class VirtualStringNodeSegmentModel {
     return this.segment.toIndex;
   }
 
+  get isReversed() {
+    return this.segment.isReversed;
+  }
+
   get stringOptions() {
     if (!this.virtualStringNode.project) return [];
     return this.virtualStringNode.project.stringDocs.map((str) => ({
@@ -88,6 +92,13 @@ export class VirtualStringNodeSegmentModel {
       ...this.segment,
       fromIndex,
       toIndex,
+    });
+  }
+
+  toggleReversed() {
+    this.update({
+      ...this.segment,
+      isReversed: !this.segment.isReversed,
     });
   }
 }

@@ -28,8 +28,12 @@ export class VirtualStringLedDataModel {
       );
       if (!stringLedData) continue;
 
-      for (let i = segment.fromIndex; i <= segment.toIndex; i++)
-        pixels.push(new VirtualPixelModel(stringLedData, i));
+      if (segment.isReversed)
+        for (let i = segment.toIndex; i >= segment.fromIndex; i--)
+          pixels.push(new VirtualPixelModel(stringLedData, i));
+      else
+        for (let i = segment.fromIndex; i <= segment.toIndex; i++)
+          pixels.push(new VirtualPixelModel(stringLedData, i));
     }
 
     return pixels;
