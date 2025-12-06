@@ -13,6 +13,7 @@ import { Fireflies } from "./string/Fireflies";
 import { FadeTo } from "./string/FadeTo";
 import { RainbowWave } from "./string/RainbowWave";
 import { Aurora } from "./string/Aurora";
+import { Fire } from "./string/Fire";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -41,6 +42,7 @@ export const stringEffectDefinitionIds = produceLiteral([
   "fireflies",
   "fadeTo",
   "aurora",
+  "fire",
 ]);
 
 const effectProps = {
@@ -99,6 +101,11 @@ const effectProps = {
     speed: inspectableProps.number,
     intensity: inspectableProps.number,
     colorSpread: inspectableProps.number,
+  }),
+  fire: z.object({
+    cooling: inspectableProps.number,
+    sparking: inspectableProps.number,
+    intensity: inspectableProps.number,
   }),
 } satisfies Record<keyof typeof stringEffectDefinitionIds, AnyZodObject>;
 
@@ -241,6 +248,18 @@ export const stringEffectDefinitions = {
       speed: 0.5,
       intensity: 1,
       colorSpread: 2,
+    },
+  },
+  fire: {
+    id: stringEffectDefinitionIds.fire,
+    name: "Fire",
+    icon: "🔥",
+    component: Fire,
+    props: effectProps.fire,
+    defaultProps: {
+      cooling: 0.02,
+      sparking: 0.3,
+      intensity: 1,
     },
   },
 } satisfies Record<
