@@ -16,6 +16,7 @@ import { Aurora } from "./string/Aurora";
 import { Fire } from "./string/Fire";
 import { Fireworks } from "./string/Fireworks";
 import { CycleSine } from "./string/CycleSine";
+import { Lightning } from "./string/Lightning";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -47,6 +48,7 @@ export const stringEffectDefinitionIds = produceLiteral([
   "fire",
   "fireworks",
   "cycleSine",
+  "lightning",
 ]);
 
 const effectProps = {
@@ -126,6 +128,13 @@ const effectProps = {
     waveSpeed: inspectableProps.number,
     wavelength: inspectableProps.number,
     waveAmplitude: inspectableProps.number,
+  }),
+  lightning: z.object({
+    strikeChance: inspectableProps.number,
+    intensity: inspectableProps.number,
+    fadeSpeed: inspectableProps.number,
+    minSpread: inspectableProps.number,
+    maxSpread: inspectableProps.number,
   }),
 } satisfies Record<keyof typeof stringEffectDefinitionIds, AnyZodObject>;
 
@@ -310,6 +319,20 @@ export const stringEffectDefinitions = {
       waveSpeed: 1,
       wavelength: 2,
       waveAmplitude: 0.2,
+    },
+  },
+  lightning: {
+    id: stringEffectDefinitionIds.lightning,
+    name: "Lightning",
+    icon: "⚡",
+    component: Lightning,
+    props: effectProps.lightning,
+    defaultProps: {
+      strikeChance: 0.05,
+      intensity: 1,
+      fadeSpeed: 0.7,
+      minSpread: 3,
+      maxSpread: 8,
     },
   },
 } satisfies Record<
