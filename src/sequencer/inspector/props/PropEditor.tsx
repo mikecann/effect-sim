@@ -2,6 +2,7 @@ import { ColorPropEditor } from "./ColorPropEditor";
 import { NumberPropEditor } from "./NumberPropEditor";
 import { StringPropEditor } from "./StringPropEditor";
 import { BooleanPropEditor } from "./BooleanPropEditor";
+import { RangePropEditor } from "./RangePropEditor";
 import type { z } from "zod";
 import { inspectableProps } from "../../../common/props/inspectableProps";
 
@@ -62,6 +63,15 @@ export function PropEditor({
         label={label}
         value={value as boolean | undefined}
         onChange={onChange as (value: boolean) => void}
+      />
+    );
+
+  if (propType === inspectableProps.range)
+    return (
+      <RangePropEditor
+        label={label}
+        value={value as [number, number] | undefined}
+        onChange={onChange as (value: [number, number]) => void}
       />
     );
 

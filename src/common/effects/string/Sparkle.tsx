@@ -20,11 +20,7 @@ export function Sparkle({
       autorun(() => {
         for (let i = 0; i < props.sparklesPerFrame; i++) {
           const seed = model.effectFrame * props.sparklesPerFrame + i;
-          const pixelIndex = seededRandomIntRange(
-            seed,
-            0,
-            string.ledCount - 1,
-          );
+          const pixelIndex = seededRandomIntRange(seed, 0, string.ledCount - 1);
           string.setPixel(
             pixelIndex,
             props.color[0],
