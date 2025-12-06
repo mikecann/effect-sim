@@ -12,6 +12,7 @@ import { Twinkle } from "./string/Twinkle";
 import { Fireflies } from "./string/Fireflies";
 import { FadeTo } from "./string/FadeTo";
 import { RainbowWave } from "./string/RainbowWave";
+import { Aurora } from "./string/Aurora";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -39,6 +40,7 @@ export const stringEffectDefinitionIds = produceLiteral([
   "twinkle",
   "fireflies",
   "fadeTo",
+  "aurora",
 ]);
 
 const effectProps = {
@@ -92,6 +94,11 @@ const effectProps = {
   fadeTo: z.object({
     color: inspectableProps.color,
     fadeSpeed: inspectableProps.number,
+  }),
+  aurora: z.object({
+    speed: inspectableProps.number,
+    intensity: inspectableProps.number,
+    colorSpread: inspectableProps.number,
   }),
 } satisfies Record<keyof typeof stringEffectDefinitionIds, AnyZodObject>;
 
@@ -222,6 +229,18 @@ export const stringEffectDefinitions = {
     defaultProps: {
       color: [0, 0, 0],
       fadeSpeed: 0.1,
+    },
+  },
+  aurora: {
+    id: stringEffectDefinitionIds.aurora,
+    name: "Aurora Borealis",
+    icon: "🌌",
+    component: Aurora,
+    props: effectProps.aurora,
+    defaultProps: {
+      speed: 0.5,
+      intensity: 1,
+      colorSpread: 2,
     },
   },
 } satisfies Record<
