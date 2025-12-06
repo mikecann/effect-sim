@@ -96,3 +96,4 @@ export function Fire({
 
   return null;
 }
+

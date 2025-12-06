@@ -14,6 +14,8 @@ import { FadeTo } from "./string/FadeTo";
 import { RainbowWave } from "./string/RainbowWave";
 import { Aurora } from "./string/Aurora";
 import { Fire } from "./string/Fire";
+import { Fireworks } from "./string/Fireworks";
+import { CycleSine } from "./string/CycleSine";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -43,6 +45,8 @@ export const stringEffectDefinitionIds = produceLiteral([
   "fadeTo",
   "aurora",
   "fire",
+  "fireworks",
+  "cycleSine",
 ]);
 
 const effectProps = {
@@ -106,6 +110,22 @@ const effectProps = {
     cooling: inspectableProps.number,
     sparking: inspectableProps.number,
     intensity: inspectableProps.number,
+  }),
+  fireworks: z.object({
+    frequency: inspectableProps.number,
+    speed: inspectableProps.number,
+    size: inspectableProps.number,
+    intensity: inspectableProps.number,
+  }),
+  cycleSine: z.object({
+    color1: inspectableProps.color,
+    color2: inspectableProps.color,
+    color3: inspectableProps.color,
+    speed: inspectableProps.number,
+    spread: inspectableProps.number,
+    waveSpeed: inspectableProps.number,
+    wavelength: inspectableProps.number,
+    waveAmplitude: inspectableProps.number,
   }),
 } satisfies Record<keyof typeof stringEffectDefinitionIds, AnyZodObject>;
 
@@ -260,6 +280,36 @@ export const stringEffectDefinitions = {
       cooling: 0.02,
       sparking: 0.3,
       intensity: 1,
+    },
+  },
+  fireworks: {
+    id: stringEffectDefinitionIds.fireworks,
+    name: "Fireworks",
+    icon: "🎆",
+    component: Fireworks,
+    props: effectProps.fireworks,
+    defaultProps: {
+      frequency: 1,
+      speed: 1,
+      size: 1,
+      intensity: 1,
+    },
+  },
+  cycleSine: {
+    id: stringEffectDefinitionIds.cycleSine,
+    name: "Cycle Sine",
+    icon: "🌊",
+    component: CycleSine,
+    props: effectProps.cycleSine,
+    defaultProps: {
+      color1: [255, 0, 0],
+      color2: [0, 255, 0],
+      color3: [0, 0, 255],
+      speed: 1,
+      spread: 3,
+      waveSpeed: 1,
+      wavelength: 2,
+      waveAmplitude: 0.2,
     },
   },
 } satisfies Record<
