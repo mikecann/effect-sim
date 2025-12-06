@@ -11,6 +11,7 @@ import { Pulse } from "./string/Pulse";
 import { Twinkle } from "./string/Twinkle";
 import { Fireflies } from "./string/Fireflies";
 import { FadeTo } from "./string/FadeTo";
+import { RainbowWave } from "./string/RainbowWave";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -28,6 +29,7 @@ export interface StringEffectDefinition {
 
 export const stringEffectDefinitionIds = produceLiteral([
   "rainbowRandom",
+  "rainbowWave",
   "sparkle",
   "setColor",
   "multiplyAll",
@@ -42,6 +44,10 @@ export const stringEffectDefinitionIds = produceLiteral([
 const effectProps = {
   rainbowRandom: z.object({
     delayMs: inspectableProps.number,
+  }),
+  rainbowWave: z.object({
+    speed: inspectableProps.number,
+    wavelength: inspectableProps.number,
   }),
   sparkle: z.object({
     color: inspectableProps.color,
@@ -98,6 +104,17 @@ export const stringEffectDefinitions = {
     props: effectProps.rainbowRandom,
     defaultProps: {
       delayMs: 0,
+    },
+  },
+  rainbowWave: {
+    id: stringEffectDefinitionIds.rainbowWave,
+    name: "Rainbow Wave",
+    icon: "🌊",
+    component: RainbowWave,
+    props: effectProps.rainbowWave,
+    defaultProps: {
+      speed: 1,
+      wavelength: 1,
     },
   },
   sparkle: {
