@@ -17,6 +17,7 @@ import { Fire } from "./string/Fire";
 import { Fireworks } from "./string/Fireworks";
 import { CycleSine } from "./string/CycleSine";
 import { Lightning } from "./string/Lightning";
+import { Plasma } from "./string/Plasma";
 import type { StringLedDataApi } from "../../data/StringLedDataModel";
 
 export type EffectComponent = React.ComponentType<{
@@ -49,6 +50,7 @@ export const stringEffectDefinitionIds = produceLiteral([
   "fireworks",
   "cycleSine",
   "lightning",
+  "plasma",
 ]);
 
 const effectProps = {
@@ -135,6 +137,13 @@ const effectProps = {
     fadeSpeed: inspectableProps.number,
     minSpread: inspectableProps.number,
     maxSpread: inspectableProps.number,
+  }),
+  plasma: z.object({
+    color: inspectableProps.color,
+    speed: inspectableProps.number,
+    scale: inspectableProps.number,
+    complexity: inspectableProps.number,
+    intensity: inspectableProps.number,
   }),
 } satisfies Record<keyof typeof stringEffectDefinitionIds, AnyZodObject>;
 
@@ -333,6 +342,20 @@ export const stringEffectDefinitions = {
       fadeSpeed: 0.7,
       minSpread: 3,
       maxSpread: 8,
+    },
+  },
+  plasma: {
+    id: stringEffectDefinitionIds.plasma,
+    name: "Plasma",
+    icon: "🔮",
+    component: Plasma,
+    props: effectProps.plasma,
+    defaultProps: {
+      color: [0, 100, 255],
+      speed: 1,
+      scale: 1,
+      complexity: 1,
+      intensity: 1,
     },
   },
 } satisfies Record<
