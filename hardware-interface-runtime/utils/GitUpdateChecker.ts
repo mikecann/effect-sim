@@ -37,8 +37,6 @@ export class GitUpdateChecker {
           error: "Could not determine current branch",
         };
 
-      logger.info(`Checking for updates on branch: ${branch}`);
-
       // Fetch latest from remote (timeout after 30 seconds)
       try {
         await this.execWithTimeout("git fetch origin", 30000);
@@ -65,11 +63,12 @@ export class GitUpdateChecker {
       // Check if we're behind
       const hasUpdate = currentCommit !== remoteCommit;
 
+      // Only log when there's something to do: this runs every minute, and
+      // "no updates" lines added ~100 MB a year to launchd's log.
       if (hasUpdate)
         logger.success(
           `Update available! Current: ${currentCommit.slice(0, 7)}, Remote: ${remoteCommit.slice(0, 7)}`,
         );
-      else logger.info("No updates available");
 
       return {
         hasUpdate,

@@ -3,11 +3,36 @@
  * Includes simple log rotation to prevent unbounded growth
  */
 
-import { appendFileSync, statSync, renameSync, unlinkSync } from "fs";
+import {
+  appendFileSync,
+  statSync,
+  renameSync,
+  unlinkSync,
+  fstatSync,
+  ftruncateSync,
+} from "fs";
 
 const LOG_FILE = "hwir-debug.log";
 const LOG_FILE_OLD = "hwir-debug.old.log";
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB max before rotation
+const MAX_CONSOLE_LOG_SIZE = 10 * 1024 * 1024;
+
+/**
+ * Under launchd, stdout and stderr go to logs/hwir.log and logs/hwir.error.log,
+ * which launchd never rotates (they once reached 5 GB). We can't rename a file
+ * we only hold by descriptor, so we empty it instead. launchd opens them for
+ * appending, so later writes start again from the top.
+ */
+const capConsoleLogFile = (fd: number) => {
+  try {
+    const stats = fstatSync(fd);
+    // A terminal or pipe isn't a file, so interactive runs are left alone
+    if (stats.isFile() && stats.size > MAX_CONSOLE_LOG_SIZE)
+      ftruncateSync(fd, 0);
+  } catch {
+    // Not fatal, the log just keeps growing
+  }
+};
 
 let checkCounter = 0;
 const CHECK_INTERVAL = 50; // Check size every 50 writes
@@ -17,6 +42,9 @@ const rotateIfNeeded = () => {
   checkCounter++;
   if (checkCounter < CHECK_INTERVAL) return;
   checkCounter = 0;
+
+  capConsoleLogFile(1);
+  capConsoleLogFile(2);
 
   try {
     const stats = statSync(LOG_FILE);

@@ -27,14 +27,17 @@ const connectWLEDDDP = async ({
   let attempt = 0;
   const maxDelay = 5000;
   const baseDelay = 500;
+  // A string that isn't plugged in retries every 5s forever, and logging each
+  // try filled launchd's log files with gigabytes. So we log the first failure,
+  // then only a reminder this often until it connects.
+  const reminderIntervalMs = 10 * 60 * 1000;
+  let lastLoggedFailureAt = 0;
 
   while (true) {
     if (signal?.aborted) throw new Error("Connection aborted before attempt");
 
     try {
-      logger.info(
-        `WLED DDP connecting to ${host}:${port}${attempt > 0 ? ` (attempt ${attempt + 1})` : ""}`,
-      );
+      if (attempt === 0) logger.info(`WLED DDP connecting to ${host}:${port}`);
 
       const socket = dgram.createSocket("udp4");
       const client = new WLEDClient({
@@ -59,16 +62,27 @@ const connectWLEDDDP = async ({
         throw new Error("Connection aborted after successful connection");
       }
 
-      logger.info(`WLED DDP connection initialized to ${host}:${port}`);
+      logger.info(
+        `WLED DDP connection initialized to ${host}:${port}${attempt > 0 ? ` after ${attempt + 1} attempts` : ""}`,
+      );
       return { socket, client };
     } catch (error) {
       if (signal?.aborted) throw new Error("Connection aborted");
 
       attempt++;
       const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
-      logger.error(
-        `WLED DDP connection failed to ${host}:${port}, retrying in ${delay}ms... error was: ${error}`,
-      );
+      const now = Date.now();
+      if (attempt === 1) {
+        logger.error(
+          `WLED DDP connection failed to ${host}:${port}, will keep retrying quietly... error was: ${error}`,
+        );
+        lastLoggedFailureAt = now;
+      } else if (now - lastLoggedFailureAt >= reminderIntervalMs) {
+        logger.warn(
+          `WLED DDP still can't reach ${host}:${port} after ${attempt} attempts, still retrying... last error was: ${error}`,
+        );
+        lastLoggedFailureAt = now;
+      }
       await sleep(delay);
     }
   }

@@ -43,7 +43,6 @@ export const AutoUpdater = ({
           return;
         }
 
-        logger.info("Checking for updates...");
         const result = await checker.checkForUpdates();
 
         if (result.error) {
