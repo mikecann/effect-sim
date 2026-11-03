@@ -34,7 +34,7 @@
     "@types/ramda": "^0.31.1",
     "@typescript/native-preview": "^7.0.0-dev.20251218.3",
     "commander": "^14.0.2",
-    "convex": "1.46.0",
+    "convex": "1.49.0",
     "convex-helpers": "^0.1.127",
     "convex-test": "^0.0.41",
     "emoji-picker-react": "^4.16.1",
