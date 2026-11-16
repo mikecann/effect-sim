@@ -39,7 +39,6 @@
     "convex-test": "^0.0.41",
     "emoji-picker-react": "^4.16.1",
     "flexlayout-react": "^0.8.17",
-    "fluent-convex": "0.9.3",
     "idb-keyval": "^6.2.2",
     "mobx": "^6.15.0",
     "mobx-persist-store": "^1.1.8",
