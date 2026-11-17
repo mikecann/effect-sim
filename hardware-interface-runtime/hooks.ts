@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
 import { ProjectModel } from "../shared/models/ProjectModel";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { logger } from "./utils/logger";
+import { plugConfigured, readPlug, switchPlug } from "./homeAssistant";
 
 export const useProjectModel = (model: HWIRAppModel) => {
   const projectDoc = useQuery(api.functions.getProject, {
@@ -72,16 +74,68 @@ export const useDisplayControl = (model: HWIRAppModel) => {
   }, [control]);
 
   // Runs after the render that applied the new settings, so the confirmation
-  // means the lights really are playing them.
+  // means the lights really are playing them. The plug is switched first: if
+  // that fails there's no confirmation, and the phone says it's offline.
   const requestedAt = control?.requestedAt ?? null;
+  const lastPlugSwitchAt = useRef(0);
   useEffect(() => {
     if (requestedAt === null) return;
     const s = control?.settings;
+    if (!s) return;
     logger.info(
-      `Remote: ${s?.isOn ? "on" : "off"}, ${s?.mode.kind} ${s?.mode.id}, brightness ${s?.brightness}`,
+      `Remote: ${s.isOn ? "on" : "off"}, ${s.mode.kind} ${s.mode.id}, brightness ${s.brightness}`,
     );
-    applied({ projectId, requestedAt }).catch((e) =>
-      logger.error(`Error confirming display change: ${e}`),
-    );
+    void (async () => {
+      try {
+        if (plugConfigured) {
+          lastPlugSwitchAt.current = Date.now();
+          await switchPlug(s.isOn);
+        }
+        await applied({ projectId, requestedAt });
+      } catch (e) {
+        logger.error(`Error applying display change: ${e}`);
+      }
+    })();
   }, [requestedAt]);
+
+  usePlugFollower(model, control, lastPlugSwitchAt);
+};
+
+/**
+ * Home Assistant switches the plug too (sunset on, 10pm off), so every 10 s
+ * check it and move on/off to match when they disagree. Skipped for 30 s
+ * after HWIR switched the plug itself, while Home Assistant catches up.
+ */
+const usePlugFollower = (
+  model: HWIRAppModel,
+  control: FunctionReturnType<typeof api.display.get> | undefined,
+  lastPlugSwitchAt: { current: number },
+) => {
+  const { projectId } = model.startupSettings;
+  const plugSwitched = useMutation(api.display.plugSwitched);
+  const latest = useRef(control);
+  useEffect(() => {
+    latest.current = control;
+  }, [control]);
+
+  useEffect(() => {
+    if (!plugConfigured || !model.startupSettings.playlistId) return;
+    const check = async () => {
+      const c = latest.current;
+      if (!c || c.status !== "live") return;
+      if (Date.now() - lastPlugSwitchAt.current < 30_000) return;
+      const plugOn = await readPlug();
+      if (plugOn === null || plugOn === c.settings.isOn) return;
+      logger.info(
+        `The lights' plug was switched ${plugOn ? "on" : "off"} outside the app`,
+      );
+      await plugSwitched({ projectId, isOn: plugOn });
+    };
+    const timer = setInterval(() => {
+      check().catch((e) =>
+        logger.error(`Error checking the lights' plug: ${e}`),
+      );
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, []);
 };

@@ -111,3 +111,16 @@ export const applied = machines.mutation({
     });
   },
 });
+
+/** The lights' power plug was switched outside the app; on/off follows it. */
+export const plugSwitched = machines.mutation({
+  args: { projectId: v.id("projects"), isOn: v.boolean() },
+  handler: async (ctx, { projectId, isOn }) => {
+    const row = await findControl(ctx, projectId);
+    if (!row) return null;
+    return await displayControl.send(ctx, row._id, {
+      type: "PLUG_SWITCHED",
+      isOn,
+    });
+  },
+});

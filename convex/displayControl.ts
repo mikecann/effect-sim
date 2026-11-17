@@ -36,6 +36,7 @@ export const displayControl = defineMachine(
       player: {
         BOOT: { settings: displaySettingsValidator },
         APPLIED: { requestedAt: v.number() },
+        PLUG_SWITCHED: { isOn: v.boolean() },
       },
     },
     guards: {
@@ -90,6 +91,11 @@ export const displayControl = defineMachine(
             effect: "request",
             description: "The phone changes the settings.",
           },
+          PLUG_SWITCHED: {
+            effect: "plugSwitched",
+            description:
+              "Something other than the phone (Home Assistant's sunset and 10pm automations, or someone at the wall) switched the lights' power plug, so on/off follows it.",
+          },
         },
       },
       unreachable: {
@@ -139,6 +145,11 @@ export const displayControl = defineMachine(
       applied: async (_ctx, { state }) => ({
         kind: "live",
         settings: state.settings,
+        appliedAt: Date.now(),
+      }),
+      plugSwitched: async (_ctx, { state, event }) => ({
+        kind: "live",
+        settings: { ...state.settings, isOn: event.isOn },
         appliedAt: Date.now(),
       }),
       timedOut: async (_ctx, { state }) => ({
