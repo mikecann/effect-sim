@@ -8,7 +8,11 @@
  * @module
  */
 
+import type * as display from "../display.js";
+import type * as displayControl from "../displayControl.js";
 import type * as functions from "../functions.js";
+import type * as machines from "../machines.js";
+import type * as machinesViewer from "../machinesViewer.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +21,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  display: typeof display;
+  displayControl: typeof displayControl;
   functions: typeof functions;
+  machines: typeof machines;
+  machinesViewer: typeof machinesViewer;
 }>;
 
 /**
@@ -46,4 +54,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  stateMachines: import("@convex-dev/state-machines/_generated/component.js").ComponentApi<"stateMachines">;
+};

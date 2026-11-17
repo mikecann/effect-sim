@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import "@mantine/core/styles.css";
@@ -18,22 +18,34 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");
 
-createRoot(rootElement).render(
-  <StrictMode>
+const MachinesPage = lazy(() => import("./MachinesPage.tsx"));
+
+// The admin Machines page sits outside the editor, with none of its providers.
+if (window.location.pathname === "/machines")
+  createRoot(rootElement).render(
     <ConvexProvider client={convex}>
-      <RouteProvider>
-        <MantineProvider defaultColorScheme="dark">
-          <ConfirmationProvider>
-            <AppProvider>
-              <ProjectFrameProvider>
-                <AppSyncer>
-                  <App />
-                </AppSyncer>
-              </ProjectFrameProvider>
-            </AppProvider>
-          </ConfirmationProvider>
-        </MantineProvider>
-      </RouteProvider>
-    </ConvexProvider>
-  </StrictMode>,
-);
+      <Suspense>
+        <MachinesPage />
+      </Suspense>
+    </ConvexProvider>,
+  );
+else
+  createRoot(rootElement).render(
+    <StrictMode>
+      <ConvexProvider client={convex}>
+        <RouteProvider>
+          <MantineProvider defaultColorScheme="dark">
+            <ConfirmationProvider>
+              <AppProvider>
+                <ProjectFrameProvider>
+                  <AppSyncer>
+                    <App />
+                  </AppSyncer>
+                </ProjectFrameProvider>
+              </AppProvider>
+            </ConfirmationProvider>
+          </MantineProvider>
+        </RouteProvider>
+      </ConvexProvider>
+    </StrictMode>,
+  );

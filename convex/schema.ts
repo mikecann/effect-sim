@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
+import { machineTimers } from "@convex-dev/state-machines";
 
 export const appliesToValidator = v.union(
   v.object({ kind: v.literal("nodes"), nodeIds: v.array(v.id("nodes")) }),
@@ -104,7 +105,52 @@ export const folderNodeFields = {
   children: v.array(v.id("nodes")),
 };
 
+// What the phone remote (ios/) asks the lights to do. HWIR applies it.
+export const displayModeValidator = v.union(
+  v.object({ kind: v.literal("playlist"), id: v.id("playlists") }),
+  v.object({ kind: v.literal("sequence"), id: v.id("sequences") }),
+);
+
+export const displaySettingsValidator = v.object({
+  isOn: v.boolean(),
+  // 0 to 1, multiplied into every LED value HWIR sends.
+  brightness: v.number(),
+  mode: displayModeValidator,
+});
+
+export type DisplaySettings = Infer<typeof displaySettingsValidator>;
+export type DisplayMode = Infer<typeof displayModeValidator>;
+
+// The displayControl machine's states (convex/displayControl.ts). Every state
+// carries the settings, so HWIR always plays `state.settings`.
+export const displayControlState = v.union(
+  v.object({
+    kind: v.literal("applying"),
+    settings: displaySettingsValidator,
+    requestedAt: v.number(),
+    // When the phone gives up waiting for HWIR to confirm (the TIMED_OUT timer).
+    timeoutAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("live"),
+    settings: displaySettingsValidator,
+    appliedAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("unreachable"),
+    settings: displaySettingsValidator,
+    requestedAt: v.number(),
+  }),
+);
+
 export default defineSchema({
+  // One row per project: the display's on/off, mode and brightness.
+  displayControls: defineTable({
+    projectId: v.id("projects"),
+    state: displayControlState,
+    stateTimers: machineTimers,
+  }).index("by_project", ["projectId"]),
+
   projects: defineTable({
     name: v.string(),
     settings: v.object({

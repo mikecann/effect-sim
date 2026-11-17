@@ -5,7 +5,7 @@ import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
 import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
 import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
 import { FrameProvider } from "../src/common/FixedFrameProvider";
-import { useProjectModel } from "./hooks";
+import { useDisplayControl, useProjectModel } from "./hooks";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
 import { AutoUpdater } from "./AutoUpdater";
@@ -14,6 +14,7 @@ const shouldAutoUpdate = process.env.HWIR_AUTO_UPDATE === "true";
 
 export const App = observer(({ app }: { app: HWIRAppModel }) => {
   useProjectModel(app);
+  useDisplayControl(app);
 
   if (!app.dataStore) return null;
   if (!app.project) return null;
@@ -30,9 +31,16 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
           <String key={string.string._id} model={string} />
         ))}
 
-        {app.playlist ? (
+        {app.isPlaylistMode ? (
           <>
-            <HeadlessPlaylistPlayer playlist={app.playlist} />
+            {/* Off: nothing plays, and the dispatcher sends black. The key
+                starts the player over when the remote changes mode. */}
+            {app.isOn && app.playlist ? (
+              <HeadlessPlaylistPlayer
+                key={app.modeKey}
+                playlist={app.playlist}
+              />
+            ) : null}
             <HeadlessLedDataDispatcher app={app} />
           </>
         ) : (

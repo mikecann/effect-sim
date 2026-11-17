@@ -25,8 +25,12 @@ type QueryReturningDocs<TTableName extends TableNames> = FunctionReference<
   Doc<TTableName>[]
 >;
 
+// The tables the editor edits through applyOperations (not displayControls,
+// which only the phone remote and HWIR change).
+type SyncableTableName = Exclude<TableNames, "displayControls">;
+
 export const TableSyncer = <
-  TTableName extends TableNames,
+  TTableName extends SyncableTableName,
   TQuery extends QueryReturningDocs<TTableName>,
 >({
   table,
