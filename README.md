@@ -302,3 +302,7 @@ Built with:
 ---
 
 **Note**: This project was built for controlling Christmas lights displays, but can be adapted for any LED lighting project!
+
+## Phone remote
+
+`ios/` is a SwiftUI iPhone app, "Lights", that turns the display on and off, picks the playlist or sequence, and sets brightness. It also adds a Control Center toggle, a widget and Siri phrases. It writes the `displayControls` row (convex/display.ts), which HWIR follows live when it runs with `--playlist`. The row runs on the displayControl state machine, which you can see at `/machines` in the editor. Build and install it with `ios/scripts/install-phone.sh`.
