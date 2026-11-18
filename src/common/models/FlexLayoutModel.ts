@@ -83,9 +83,10 @@ export class FlexLayoutModel {
   }
 
   showInspector() {
-    const inspectorTab = this.model.getNodeById(INSPECTOR_TAB_ID);
-    if (inspectorTab)
-      return this.model.doAction(Actions.selectTab(INSPECTOR_TAB_ID));
+    // The default layout's inspector tab is "inspector"; one added later is INSPECTOR_TAB_ID.
+    for (const id of ["inspector", INSPECTOR_TAB_ID])
+      if (this.model.getNodeById(id))
+        return this.model.doAction(Actions.selectTab(id));
 
     const editorTabset = this.model.getNodeById(STRINGS_TAB_ID)?.getParent();
     if (!editorTabset) return;

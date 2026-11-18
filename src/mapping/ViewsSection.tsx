@@ -133,9 +133,20 @@ function AlignControls({
       ) : (
         <>
           <Text size="xs" c="dimmed">
-            Move the camera until the house lines up with the photo, then keep
-            that view.
+            Move the camera and set the photo's field of view until the house
+            lines up with the photo, then keep that view.
           </Text>
+          <Text size="xs" fw={500}>
+            Field of view
+          </Text>
+          <Slider
+            min={15}
+            max={100}
+            step={0.5}
+            value={mapping.handFovDeg}
+            onChange={(v) => mapping.setHandFov(v)}
+            label={(v) => `${v}°`}
+          />
           <Button size="xs" onClick={() => mapping.useView(view.name, aspect)}>
             Use this view
           </Button>

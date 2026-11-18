@@ -11,6 +11,20 @@ export type MappingView = {
 
 export type AlignMode = "points" | "byHand";
 
+/** A phone or camera's field of view is well inside this; outside it the pairs don't match. */
+const PLAUSIBLE_FOV_DEG = { min: 5, max: 120 };
+/** Points landing further off than this (as a share of the photo's height) mean a pair is wrong. */
+const MAX_RMS_ERROR = 0.03;
+
+/** Why a solved camera can't be right, or null. */
+const findFitProblem = (fovDeg: number, rmsError: number): string | null => {
+  if (fovDeg < PLAUSIBLE_FOV_DEG.min || fovDeg > PLAUSIBLE_FOV_DEG.max)
+    return `That fit needs a ${fovDeg.toFixed(0)}° field of view, which no camera has: some pairs don't match. Check them, or remove the odd one out.`;
+  if (rmsError > MAX_RMS_ERROR)
+    return `The pairs don't agree: points land ${(rmsError * 100).toFixed(1)}% of the photo's height from where they were picked. Check them, or remove the odd one out.`;
+  return null;
+};
+
 /** One view's camera, once lined up. */
 export type ViewAlignment = {
   pose: CameraPose;
@@ -35,6 +49,8 @@ export class MappingUIModel {
   /** The 3D view follows the open photo's camera (else it moves freely). */
   cameraLocked = false;
   solveError: string | null = null;
+  /** The photo camera's vertical field of view while lining up by hand. */
+  handFovDeg = 45;
   /** Per string, how each proposed LED got its position (for colouring the review). */
   sources = new Map<string, LedSource[]>();
   view: MappingView | null = null;
@@ -73,6 +89,10 @@ export class MappingUIModel {
     this.solveError = null;
   }
 
+  setHandFov(fovDeg: number) {
+    this.handFovDeg = fovDeg;
+  }
+
   setCameraLocked(value: boolean) {
     this.cameraLocked = value;
   }
@@ -84,7 +104,13 @@ export class MappingUIModel {
         aspect,
         initial: this.view?.readPose(aspect),
       });
+      const problem = findFitProblem(result.pose.fovDeg, result.rmsError);
+      if (problem) {
+        this.solveError = problem;
+        return;
+      }
       this.align(viewName, { pose: result.pose, rmsError: result.rmsError });
+      this.handFovDeg = result.pose.fovDeg;
       this.cameraLocked = true;
     } catch (error) {
       this.solveError = error instanceof Error ? error.message : String(error);

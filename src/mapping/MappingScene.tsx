@@ -79,19 +79,25 @@ function PhotoCamera({
     }
   }, [get, locked]);
 
+  // Locked, the view sits where the photo's camera did. Free, it keeps the
+  // photo's field of view as set by hand, so what lines up is what's kept.
   useFrame(({ camera: frameCamera, size }) => {
     const pose = mapping.alignmentOf(viewName)?.pose;
     const camera = perspective(frameCamera);
-    if (!mapping.cameraLocked || !pose || !camera) return;
+    if (!camera) return;
     const rect = photoRect(size.width, size.height, aspect);
-    camera.position.set(pose.position.x, pose.position.y, pose.position.z);
-    camera.quaternion.set(
-      pose.quaternion.x,
-      pose.quaternion.y,
-      pose.quaternion.z,
-      pose.quaternion.w,
-    );
-    const fov = viewFovForPhoto(pose.fovDeg, size.height, rect);
+    const isLocked = mapping.cameraLocked && pose;
+    if (isLocked) {
+      camera.position.set(pose.position.x, pose.position.y, pose.position.z);
+      camera.quaternion.set(
+        pose.quaternion.x,
+        pose.quaternion.y,
+        pose.quaternion.z,
+        pose.quaternion.w,
+      );
+    }
+    const photoFov = isLocked ? pose.fovDeg : mapping.handFovDeg;
+    const fov = viewFovForPhoto(photoFov, size.height, rect);
     if (Math.abs(camera.fov - fov) > 1e-6) {
       camera.fov = fov;
       camera.updateProjectionMatrix();

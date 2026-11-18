@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useApp } from "./AppContext";
 import { useLedData } from "../data/LedDataStoreContext";
+import { useThree, type RootState } from "@react-three/fiber";
 
 declare global {
   interface Window {
@@ -9,6 +10,8 @@ declare global {
       app: ReturnType<typeof useApp>;
       ledData: ReturnType<typeof useLedData>;
     };
+    /** The simulator's three.js state (camera, scene, raycaster), in dev. */
+    __effectSimCanvas?: () => RootState;
   }
 }
 
@@ -23,5 +26,18 @@ export function DevHooks() {
       delete window.__effectSim;
     };
   }, [app, ledData]);
+  return null;
+}
+
+/** In dev, puts the simulator's three.js state on window.__effectSimCanvas. */
+export function DevCanvasHooks() {
+  const get = useThree((s) => s.get);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__effectSimCanvas = get;
+    return () => {
+      delete window.__effectSimCanvas;
+    };
+  }, [get]);
   return null;
 }

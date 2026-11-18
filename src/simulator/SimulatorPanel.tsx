@@ -8,6 +8,7 @@ import { PlacementStatus } from "./placing/PlacementStatus.tsx";
 import { MappingScene } from "../mapping/MappingScene.tsx";
 import { PhotoOverlay } from "../mapping/PhotoOverlay.tsx";
 import { RangePickStatus } from "./ui/RangePickStatus.tsx";
+import { DevCanvasHooks } from "../common/DevHooks.tsx";
 import StringPlacer from "./placing/StringPlacer.tsx";
 import StringsRenderer from "./StringsRenderer.tsx";
 import { NightModeMultiCameraPass } from "./rendering/NightModeMultiCameraPass.tsx";
@@ -72,6 +73,7 @@ export default function SimulatorPanel({ id }: { id: string }) {
           {app.placingTool ? <StringPlacer tool={app.placingTool} /> : null}
           <StringsRenderer />
           <MappingScene />
+          <DevCanvasHooks />
 
           {project.settings.nightMode ? (
             <NightModeMultiCameraPass
