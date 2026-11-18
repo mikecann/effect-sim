@@ -168,4 +168,75 @@ describe("ProjectSyncModel", () => {
     await tick(0);
     expect(sync.status).toEqual({ kind: "saved" });
   });
+
+  it("reopening a project drops the old rows and takes the server's, sending nothing stale", async () => {
+    const { project, sync, calls, label } = setup();
+    sync.close();
+    // Another tab renames a and deletes b while the project is closed.
+    const reopened = new ProjectSyncModel(project, async (changes) => {
+      calls.push({ changes, resolve: () => {}, reject: () => {} });
+      return ok(0);
+    });
+    reopened.start();
+    expect(project.nodes).toEqual([]);
+    reopened.applyServerData(
+      data(folder("a", "A (other tab)")),
+      projectDoc,
+      true,
+    );
+    await tick(SYNC_DEBOUNCE_MS * 2);
+    expect(label("a")).toBe("A (other tab)");
+    expect(project.findNode("b")).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("closing sends the last edits at once", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("last edit");
+    sync.close();
+    await tick(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.changes[0]).toMatchObject({ op: "update", key: "a" });
+  });
+
+  it("a row deleted elsewhere goes, even if edited while its update was out", async () => {
+    const { project, sync, calls } = setup();
+    const b = project.findNode("b");
+    if (b?.kind !== "folder") throw new Error("no b");
+    b.setLabel("B1");
+    await tick(SYNC_DEBOUNCE_MS);
+    b.setLabel("B2"); // edited again while the update is out
+    sync.applyServerData(data(folder("a", "A")), projectDoc, true); // deleted elsewhere
+    calls[0]?.resolve({
+      ...ok(0),
+      skipped: [
+        {
+          table: "nodes",
+          key: "b",
+          reason: "It was deleted, so the change was dropped.",
+        },
+      ],
+    });
+    await tick(SYNC_DEBOUNCE_MS * 4);
+    expect(project.findNode("b")).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("never sends a row too big to store, and still saves the rest", async () => {
+    const { project, sync, calls, label } = setup();
+    const a = project.findNode("a");
+    const b = project.findNode("b");
+    if (a?.kind !== "folder" || b?.kind !== "folder") throw new Error("no a/b");
+    a.setLabel("x".repeat(1_000_000));
+    b.setLabel("B1");
+    await tick(SYNC_DEBOUNCE_MS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.changes.map((c) => ("key" in c ? c.key : ""))).toEqual([
+      "b",
+    ]);
+    expect(label("a")).toBe("A");
+    expect(sync.lastProblems[0]).toMatchObject({ key: "a" });
+  });
 });

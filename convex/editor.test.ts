@@ -130,21 +130,25 @@ describe("editor.sync", () => {
     expect(playlists[0]?.sequenceIds).toEqual(["q", "q"]);
   });
 
-  test("an update replaces the row; a create of an existing key updates it", async () => {
+  test("an update replaces the row; a create never overwrites a saved row", async () => {
     const { sync, node } = await setup();
     await sync([{ table: "nodes", op: "create", key: "s1", doc: string("1") }]);
     await sync([
       { table: "nodes", op: "update", key: "s1", doc: string("One") },
     ]);
-    expect(
-      (await node("s1"))?.kind === "string" && (await node("s1")),
-    ).toMatchObject({ name: "One" });
-    // A retry of a create whose answer was lost.
+    expect(await node("s1")).toMatchObject({ name: "One" });
+    // A retry of a create whose answer was lost is fine...
     const retry = await sync([
-      { table: "nodes", op: "create", key: "s1", doc: string("Uno") },
+      { table: "nodes", op: "create", key: "s1", doc: string("One") },
     ]);
-    expect(retry.applied).toBe(1);
-    expect(await node("s1")).toMatchObject({ name: "Uno" });
+    expect(retry).toMatchObject({ applied: 1, skipped: [] });
+    // ...but a stale copy sent as a create doesn't overwrite newer data.
+    const stale = await sync([
+      { table: "nodes", op: "create", key: "s1", doc: string("1") },
+    ]);
+    expect(stale.applied).toBe(0);
+    expect(stale.skipped.map((s) => s.key)).toEqual(["s1"]);
+    expect(await node("s1")).toMatchObject({ name: "One" });
   });
 
   test("deleting a folder moves its children up to its parent", async () => {
@@ -503,5 +507,135 @@ describe("editor.sync", () => {
     await expect(
       t.mutation(api.editor.sync, { token, projectId, changes: [] }),
     ).rejects.toThrow(/doesn't exist/);
+  });
+
+  describe("limits that keep one row from blocking every save", () => {
+    test("an oversized row is rejected and the rest of the batch applies", async () => {
+      const { sync, node } = await setup();
+      // About 1.3 MB: over the 900 KB a row may be.
+      const pathPoints = Array.from({ length: 18_000 }, (_, i) => ({
+        position: { x: i + 0.123456789, y: i + 0.987654321, z: i + 0.5555555 },
+      }));
+      const result = await sync([
+        {
+          table: "nodes",
+          op: "create",
+          key: "huge",
+          doc: { ...string("Huge", 10), pathPoints } as NodeFields,
+        },
+        { table: "nodes", op: "create", key: "ok", doc: string("Fine") },
+      ]);
+      expect(result.rejected.map((r) => r.key)).toEqual(["huge"]);
+      expect(result.rejected[0]?.reason).toMatch(
+        /KB; a row can be at most 900 KB/,
+      );
+      expect(await node("huge")).toBeUndefined();
+      expect(await node("ok")).toBeDefined();
+    });
+
+    test("too many segments, a long name and a bad key are rejected", async () => {
+      const { sync } = await setup();
+      const result = await sync([
+        { table: "nodes", op: "create", key: "s1", doc: string("1") },
+        {
+          table: "nodes",
+          op: "create",
+          key: "v",
+          doc: virtual(
+            Array.from({ length: 1001 }, () => ({
+              nodeId: "s1",
+              fromIndex: 0,
+              toIndex: 1,
+            })),
+          ),
+        },
+        {
+          table: "nodes",
+          op: "create",
+          key: "long",
+          doc: string("n".repeat(201)),
+        },
+        {
+          table: "nodes",
+          op: "create",
+          key: "k".repeat(101),
+          doc: string("key"),
+        },
+        {
+          table: "playlists",
+          op: "create",
+          key: "p",
+          doc: {
+            name: "P",
+            sequenceIds: Array.from({ length: 1001 }, () => "q"),
+          },
+        },
+      ]);
+      expect(result.applied).toBe(1);
+      expect(result.rejected.map((r) => r.reason)).toEqual([
+        "It has 1001 segments; the most is 1000.",
+        "The name is 201 characters; the most is 200.",
+        "A key is 1 to 100 characters.",
+        "It has 1001 sequences; the most is 1000.",
+      ]);
+    });
+
+    test("effect props out of bounds, and inherited effect names, are rejected without throwing", async () => {
+      const { sync } = await setup();
+      const withEffect = (
+        effectDefinitionId: string,
+        props: unknown,
+      ): SequenceFields => {
+        const base = sequence([], props);
+        return {
+          ...base,
+          tracks: base.tracks.map((track) => ({
+            ...track,
+            events: track.events.map((e) => ({ ...e, effectDefinitionId })),
+          })),
+        };
+      };
+      const result = await sync([
+        {
+          table: "sequences",
+          op: "create",
+          key: "ff",
+          doc: withEffect("fireflies", { numFireflies: 1e9 }),
+        },
+        {
+          table: "sequences",
+          op: "create",
+          key: "ts",
+          doc: withEffect("toString", {}),
+        },
+        {
+          table: "sequences",
+          op: "create",
+          key: "ok",
+          doc: withEffect("fireflies", { numFireflies: 105 }),
+        },
+      ]);
+      expect(result.applied).toBe(1);
+      expect(result.rejected.map((r) => r.key)).toEqual(["ff", "ts"]);
+      expect(result.rejected[0]?.reason).toContain("numFireflies");
+      expect(result.rejected[1]?.reason).toBe(
+        "There's no string effect called 'toString'.",
+      );
+    });
+  });
+
+  test("moving a folder under its child while deleting that child can't make a loop", async () => {
+    const { sync, node } = await setup();
+    await sync([
+      { table: "nodes", op: "create", key: "a", doc: folder("A") },
+      { table: "nodes", op: "create", key: "b", doc: folder("B", "a") },
+    ]);
+    const result = await sync([
+      { table: "nodes", op: "update", key: "a", doc: folder("A", "b") },
+      { table: "nodes", op: "delete", key: "b" },
+    ]);
+    expect(result.applied).toBe(2);
+    expect(await node("b")).toBeUndefined();
+    expect((await node("a"))?.parentId).toBeNull();
   });
 });

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { produceLiteral } from "../misc";
 import { inspectableProps } from "./inspectableProps";
 
-// Every effect's id and the zod schema of its props. Shared by the editor and
+// Every effect's id and the zod schema of its props. Every number has bounds
+// that keep an effect's loops and allocations small (a runaway count would
+// freeze HWIR on the live display); production's values all fit them. Shared by the editor and
 // HWIR (src/common/effects/*Definitions.ts, which add the components) and by
 // Convex, which checks each event's props in editor.sync.
 
@@ -29,101 +31,101 @@ export const stringEffectDefinitionIds = produceLiteral([
 
 export const stringEffectProps = {
   rainbowRandom: z.object({
-    delayMs: inspectableProps.number,
+    delayMs: inspectableProps.bounded(0, 60_000),
   }),
   rainbowWave: z.object({
-    speed: inspectableProps.number,
-    wavelength: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
+    wavelength: inspectableProps.bounded(0, 100),
   }),
   sparkle: z.object({
     color: inspectableProps.color,
-    sparklesPerFrame: inspectableProps.number,
+    sparklesPerFrame: inspectableProps.bounded(0, 1000),
   }),
   setColor: z.object({
     color: inspectableProps.color,
   }),
   multiplyAll: z.object({
-    multiplier: inspectableProps.number,
+    multiplier: inspectableProps.bounded(0, 10),
   }),
   comet: z.object({
     color: inspectableProps.color,
-    size: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
+    size: inspectableProps.bounded(0, 1000),
+    fadeRatio: inspectableProps.bounded(0, 1),
   }),
   bouncingComet: z.object({
     color: inspectableProps.color,
-    size: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
-    numBounces: inspectableProps.number,
+    size: inspectableProps.bounded(0, 1000),
+    fadeRatio: inspectableProps.bounded(0, 1),
+    numBounces: inspectableProps.bounded(0, 100),
   }),
   pulse: z.object({
     fromColor: inspectableProps.color,
     toColor: inspectableProps.color,
-    speed: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
   }),
   twinkle: z.object({
     fromColor: inspectableProps.color,
     toColor: inspectableProps.color,
-    speed: inspectableProps.number,
-    ratioOfLedsToApplyTo: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
+    ratioOfLedsToApplyTo: inspectableProps.bounded(0, 1),
   }),
   fireflies: z.object({
     color: inspectableProps.color,
-    numFireflies: inspectableProps.number,
-    speed: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
-    minTravelDistance: inspectableProps.number,
-    maxTravelDistance: inspectableProps.number,
+    numFireflies: inspectableProps.bounded(0, 500),
+    speed: inspectableProps.bounded(-100, 100),
+    fadeRatio: inspectableProps.bounded(0, 1),
+    minTravelDistance: inspectableProps.bounded(0, 1),
+    maxTravelDistance: inspectableProps.bounded(0, 1),
   }),
   fadeTo: z.object({
     color: inspectableProps.color,
-    fadeSpeed: inspectableProps.number,
+    fadeSpeed: inspectableProps.bounded(0, 1),
   }),
   aurora: z.object({
-    speed: inspectableProps.number,
-    intensity: inspectableProps.number,
-    colorSpread: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
+    intensity: inspectableProps.bounded(0, 10),
+    colorSpread: inspectableProps.bounded(0, 100),
   }),
   fire: z.object({
-    cooling: inspectableProps.number,
-    sparking: inspectableProps.number,
-    intensity: inspectableProps.number,
+    cooling: inspectableProps.bounded(0, 1),
+    sparking: inspectableProps.bounded(0, 1),
+    intensity: inspectableProps.bounded(0, 10),
   }),
   fireworks: z.object({
-    frequency: inspectableProps.number,
-    speed: inspectableProps.number,
-    size: inspectableProps.number,
-    intensity: inspectableProps.number,
+    frequency: inspectableProps.bounded(0, 100),
+    speed: inspectableProps.bounded(-100, 100),
+    size: inspectableProps.bounded(0, 1000),
+    intensity: inspectableProps.bounded(0, 10),
   }),
   cycleSine: z.object({
     color1: inspectableProps.color,
     color2: inspectableProps.color,
     color3: inspectableProps.color,
-    speed: inspectableProps.number,
-    spread: inspectableProps.number,
-    waveSpeed: inspectableProps.number,
-    wavelength: inspectableProps.number,
-    waveAmplitude: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
+    spread: inspectableProps.bounded(0, 100),
+    waveSpeed: inspectableProps.bounded(-100, 100),
+    wavelength: inspectableProps.bounded(0, 100),
+    waveAmplitude: inspectableProps.bounded(0, 10),
   }),
   lightning: z.object({
-    strikeChance: inspectableProps.number,
-    intensity: inspectableProps.number,
-    fadeSpeed: inspectableProps.number,
-    minSpread: inspectableProps.number,
-    maxSpread: inspectableProps.number,
+    strikeChance: inspectableProps.bounded(0, 1),
+    intensity: inspectableProps.bounded(0, 10),
+    fadeSpeed: inspectableProps.bounded(0, 1),
+    minSpread: inspectableProps.bounded(0, 1000),
+    maxSpread: inspectableProps.bounded(0, 1000),
   }),
   plasma: z.object({
     color: inspectableProps.color,
-    speed: inspectableProps.number,
-    scale: inspectableProps.number,
-    complexity: inspectableProps.number,
-    intensity: inspectableProps.number,
+    speed: inspectableProps.bounded(-100, 100),
+    scale: inspectableProps.bounded(0, 100),
+    complexity: inspectableProps.bounded(0, 10),
+    intensity: inspectableProps.bounded(0, 10),
   }),
   bouncingBalls: z.object({
-    numBalls: inspectableProps.number,
-    speed: inspectableProps.number,
-    size: inspectableProps.number,
-    intensity: inspectableProps.number,
+    numBalls: inspectableProps.bounded(0, 100),
+    speed: inspectableProps.bounded(-100, 100),
+    size: inspectableProps.bounded(0, 1000),
+    intensity: inspectableProps.bounded(0, 10),
   }),
 } satisfies Record<
   keyof typeof stringEffectDefinitionIds,
@@ -164,7 +166,13 @@ export const findEffectPropsProblem = (
   "string_effect"
     ? stringEffectProps
     : switchEffectProps;
-  const schema = schemas[effectDefinitionId];
+  // An own property only: "toString" isn't an effect.
+  const schema = Object.prototype.hasOwnProperty.call(
+    schemas,
+    effectDefinitionId,
+  )
+    ? schemas[effectDefinitionId]
+    : undefined;
   if (!schema)
     return `There's no ${kind.replace("_", " ")} called '${effectDefinitionId}'.`;
   if (props === undefined || props === null) return null;

@@ -6,12 +6,16 @@ type NumberPropEditorProps = {
   label: string;
   value: NumberProp | undefined;
   onChange: (value: NumberProp) => void;
+  min?: number;
+  max?: number;
 };
 
 export function NumberPropEditor({
   label,
   value,
   onChange,
+  min,
+  max,
 }: NumberPropEditorProps) {
   const step = useAdaptiveStep(value);
   return (
@@ -20,6 +24,9 @@ export function NumberPropEditor({
       value={value ?? 0}
       onChange={(val) => onChange(Number(val))}
       step={step}
+      min={min}
+      max={max}
+      clampBehavior="strict"
       size="sm"
       styles={{
         input: {
