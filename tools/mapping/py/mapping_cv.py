@@ -678,8 +678,38 @@ def chain_from(start: np.ndarray, peaks: np.ndarray, first_reach: float, reach: 
     return chain
 
 
+# A block set is thrown out when more than this share of the LEDs already
+# placed (none of them in a block) light up in its frames: the lights
+# weren't showing the blocks. An HWIR rolled back to before block patterns
+# acks them but lights every LED. On the synthetic house with twinkle
+# (18 Nov): every such set lit 100% of them; real block sets at most 28%
+# (glow and twinkle next to a block), most under 5%.
+KNOWN_LIT_MAX = 0.6
+KNOWN_MIN_SAMPLES = 20
+
+
+def known_lit(change: np.ndarray, threshold: float, known: list[dict], blocks: list[dict], px, side: float) -> dict:
+    """How many of the placed LEDs (away from every block's regions) are lit
+    in the set's steady change."""
+    h, w = change.shape
+    inside = np.zeros((h, w), np.uint8)
+    for b in blocks:
+        for r in list(b.get("regions", [])) + list(b.get("fallback") or []):
+            c = px(r)
+            cv2.circle(inside, (int(round(c[0])), int(round(c[1]))), int(round(r["radius"] * side)) + 6, 1, -1)
+    lit = total = 0
+    for k in known:
+        x, y = (int(round(v)) for v in px(k))
+        if not (0 <= x < w and 0 <= y < h) or inside[y, x]:
+            continue
+        total += 1
+        if change[max(0, y - 2):y + 3, max(0, x - 2):x + 3].max() > threshold:
+            lit += 1
+    return {"knownLit": lit, "knownChecked": total}
+
+
 def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[int] | None = None,
-                  channel: str = "max", debug: str | None = None) -> dict:
+                  channel: str = "max", debug: str | None = None, known: list[dict] | None = None) -> dict:
     """Where each lit block's LEDs are. Every block in the frames was lit at
     once, each searched for only inside its own region (circles round where its
     string's known LEDs say it can be; regions of one set don't overlap).
@@ -842,8 +872,10 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
             d_all = np.hypot(*(peaks_a - px(anchor)).T)
             far = np.hypot(*(peaks_a - pts[0]).T) > step * 0.8
             rivals = far & (np.abs(d_all - d_first) <= 0.35 * ref)
-            first_w = float(weights_a[np.argmin(np.hypot(*(peaks_a - pts[0]).T))])
-            if rivals.any() and float(weights_a[rivals].max()) >= 0.15 * first_w:
+            # Any spot bright enough to be a peak counts, however dim next to
+            # the chain: a weight cut-off only narrows the case (Codex, 18 Nov).
+            # The cost is a split block now and then, which is safe.
+            if rivals.any():
                 ambiguous = True
         info["ambiguous"] = ambiguous
         # A partial chain has to measure its own spacing (three spots at
@@ -877,6 +909,21 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
             # nothing else in these frames was lit, before calling it hidden.
             res = {**one(b, b["fallback"]), "wide": True}
         results.append(res)
+
+    # The frames should light only the blocks. LEDs already placed lighting
+    # up as well means something else was showing (an HWIR rolled back after
+    # acking, which lights every LED for a pattern it doesn't know), so
+    # nothing from this set is trusted.
+    if known:
+        change = steady_change(on, off, crop_t, None, channel)
+        _, threshold = lit_mask(np.clip(change, 0, None).astype(np.float32))
+        check = known_lit(change, threshold, known, blocks, px, side)
+        if os.environ.get("MAPPING_DEBUG_OUTSIDE"):
+            open(os.environ["MAPPING_DEBUG_OUTSIDE"], "a").write(f"{check['knownLit']} {check['knownChecked']} {len(blocks)}\n")
+        if (check["knownChecked"] >= KNOWN_MIN_SAMPLES
+                and check["knownLit"] > KNOWN_LIT_MAX * check["knownChecked"]):
+            results = [{"status": "unclear", "why": "LEDs outside the blocks lit too: the lights may not be showing this pattern", **check}
+                       for _ in blocks]
 
     if debug:
         # The set's own frames against the plain off frames, over the crop.
@@ -986,7 +1033,7 @@ def worker() -> None:
         "pair": lambda a: check_pair(a["dark"], a["all"], a["normal"], a["inverted"]),
         "locate": lambda a: locate(a["dark"], a["frame"], a.get("expect"), a.get("debug"), a.get("near")),
         "draw": lambda a: draw_debug(a["photo"], a["result"], a["out"], a.get("highlight")),
-        "blocks": lambda a: locate_blocks(a["on"], a["off"], a["blocks"], a.get("crop"), a.get("channel", "max"), a.get("debug")),
+        "blocks": lambda a: locate_blocks(a["on"], a["off"], a["blocks"], a.get("crop"), a.get("channel", "max"), a.get("debug"), a.get("known")),
         "compose": lambda a: compose(a["base"], a["source"], a["sourceDark"], a["points"], a["radius"], a["out"]),
         "render": lambda a: render(a["scene"], a["lit"], a["out"], a.get("seed", 0), a.get("reference", False)),
         "size": lambda a: dict(zip(("width", "height"), image_size(a["file"]))),

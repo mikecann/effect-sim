@@ -18,6 +18,7 @@ import {
 } from "./lib/blockFill";
 import { FakeSession, ReplayCamera, SyntheticCamera } from "./lib/fakes";
 import type { Decoded, DecodedPoint } from "./lib/manifest";
+import type { MappingPattern } from "../../convex/schema";
 import { PyWorker, pythonReady } from "./lib/python";
 import { makeScene, rng, type HouseString } from "./lib/scene";
 
@@ -437,6 +438,108 @@ describe.skipIf(!pythonReady() || process.env.MAPPING_E2E !== "1")(
           expect(result.wrong).toBeLessThanOrEqual(result.filled * 0.03);
           expect(result.phantom).toBe(0);
           expect(result.medianErrorPx).toBeLessThan(1);
+        } finally {
+          py.close();
+        }
+      },
+    );
+
+    test(
+      "an HWIR that lights every LED for a block (rolled back) places nothing",
+      { timeout: 300_000 },
+      async () => {
+        const dir = mkdtempSync(join(tmpdir(), "mapping-blocks-"));
+        dirs.push(dir);
+        const fixture = JSON.parse(
+          readFileSync(
+            join(
+              import.meta.dirname ?? __dirname,
+              "test/fixtures/house-strings.json",
+            ),
+            "utf8",
+          ),
+        ) as { strings: HouseString[] };
+        const strings = fixture.strings;
+        const scene = makeScene(strings, {
+          seed: 7,
+          width: 3840,
+          height: 2160,
+          yawDegrees: 330,
+          twinkles: 400,
+        });
+        const scenePath = join(dir, "scene.json");
+        writeFileSync(scenePath, JSON.stringify(scene));
+        const truth = new Map<string, ({ x: number; y: number } | null)[]>();
+        for (const l of scene.leds) {
+          const pts = truth.get(l.key) ?? [];
+          pts[l.index] = l.visible ? { x: l.x, y: l.y } : null;
+          truth.set(l.key, pts);
+        }
+        // What a decode found: every visible LED, then runs taken out.
+        const decoded: Decoded = {
+          version: 1,
+          imageWidth: scene.width,
+          imageHeight: scene.height,
+          totalLeds: scene.leds.length,
+          stats: {},
+          strings: strings.map((s) => ({
+            key: s.key,
+            name: s.name,
+            ledCount: s.ledCount,
+            measured: 0,
+            interpolated: 0,
+            outliers: [],
+            points: (truth.get(s.key) ?? []).map((t) =>
+              t
+                ? {
+                    u: (t.x + 0.5) / scene.width,
+                    v: (t.y + 0.5) / scene.height,
+                    confidence: 0.8,
+                  }
+                : null,
+            ),
+          })),
+          rejected: [],
+        };
+        knockOut(decoded, 0.35, 3);
+        const gaps = gapsOf(decoded);
+
+        const py = new PyWorker();
+        // An HWIR older than block patterns: it acks them but lights the
+        // whole house (shared/mapping/ledCodes.ts, RENDERED_PATTERN_KINDS).
+        const session = new (class extends FakeSession {
+          override showing(): MappingPattern {
+            const p = super.showing();
+            return p.kind === "ranges" ? { kind: "all" } : p;
+          }
+        })(1);
+        const camera = new SyntheticCamera(
+          scenePath,
+          scene,
+          strings,
+          session,
+          py,
+        );
+        const lines: string[] = [];
+        try {
+          const report = await fillBlocks({
+            decoded,
+            keys: strings.map((s) => s.key),
+            session,
+            camera,
+            py,
+            dir: join(dir, "blocks"),
+            settleMs: 0,
+            repeats,
+            minutes: 0.5,
+            log: (l) => lines.push(l),
+          });
+          const result = score(decoded, truth, gaps);
+          const summary = `${lines.join("\n")}\nsynthetic block fill: ${JSON.stringify({ ...result, ...report })}`;
+          console.log(summary);
+          writeFileSync(join(dir, "report.txt"), summary);
+          expect(result.filled).toBe(0);
+          expect(result.phantom).toBe(0);
         } finally {
           py.close();
         }

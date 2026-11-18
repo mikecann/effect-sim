@@ -496,6 +496,21 @@ export type BlockFillReport = {
  * Fills the gaps of these strings in `decoded` (changed in place): rounds of
  * blocks until every gap LED is placed, hidden or unclear, or time runs out.
  */
+/**
+ * Up to 400 placed LEDs, spread over every string: none is in a block, so a
+ * block photo should leave them dark. The Python side throws a set out when
+ * many light up (the lights weren't showing the blocks).
+ */
+export const knownSample = (decoded: Decoded, max = 400) => {
+  const all = decoded.strings.flatMap((s) =>
+    s.points.flatMap((p) =>
+      p && p.confidence >= 0.3 ? [{ u: p.u, v: p.v }] : [],
+    ),
+  );
+  const every = Math.max(1, Math.ceil(all.length / max));
+  return all.filter((_, i) => i % every === 0);
+};
+
 export const fillBlocks = async (args: {
   decoded: Decoded;
   keys: string[];
@@ -620,6 +635,7 @@ export const fillBlocks = async (args: {
             spacing: b.spacing,
           })),
           crop,
+          known: knownSample(decoded),
           debug: join(dir, `r${rounds}-s${s + 1}-debug.jpg`),
         },
       );
