@@ -12,28 +12,41 @@ export const wipe = defineEffect({
   icon: "🧹",
   props: z.object({
     color: inspectableProps.color,
-    /** Which way it sweeps, seen from the front: 0 left to right, 90 bottom to top. */
+    /** Which way it sweeps around the house, seen from above: 0 along +x, 90 along +z. */
     angle: inspectableProps.bounded(0, 360),
+    /** How steeply it climbs: 0 level, 90 straight up from the bottom, -90 down from the top. */
+    tilt: inspectableProps.bounded(-90, 90),
     /** How soft its leading edge is, as a share of the house. */
     softness: inspectableProps.bounded(0, 1),
     /** Leave the LEDs lit behind it (else only the edge shows). */
     trail: inspectableProps.bounded(0, 1),
   }),
-  defaults: { color: [255, 255, 255], angle: 0, softness: 0.1, trail: 1 },
+  defaults: {
+    color: [255, 255, 255],
+    angle: 0,
+    tilt: 0,
+    softness: 0.1,
+    trail: 1,
+  },
   render: function Wipe({ string, props }) {
     const timing = useEffectTiming();
     useEffectFrame(() => {
-      const radians = (props.angle * Math.PI) / 180;
-      const dx = Math.cos(radians);
-      const dy = Math.sin(radians);
-      // Where each LED falls along the sweep, 0 where it starts to 1 where it ends.
-      const reach = Math.abs(dx) + Math.abs(dy);
-      const offset = (Math.min(0, dx) + Math.min(0, dy)) * -1;
+      const angle = (props.angle * Math.PI) / 180;
+      const tilt = (props.tilt * Math.PI) / 180;
+      const d = [
+        Math.cos(tilt) * Math.cos(angle),
+        Math.sin(tilt),
+        Math.cos(tilt) * Math.sin(angle),
+      ];
+      // Where each LED falls along the sweep across the house's box: 0 at
+      // the corner it starts from, 1 at the far one.
+      const reach = d.reduce((sum, c) => sum + Math.abs(c), 0);
+      const offset = -d.reduce((sum, c) => sum + Math.min(0, c), 0);
       const edge = timing.effectPlaybackRatio * (1 + props.softness);
 
       for (let i = 0; i < string.ledCount; i++) {
         const p = string.getNormalisedPosition(i);
-        const along = (p.x * dx + p.y * dy + offset) / reach;
+        const along = (p.x * d[0] + p.y * d[1] + p.z * d[2] + offset) / reach;
         const behind = edge - along;
         if (behind < 0) continue;
         const inEdge =
