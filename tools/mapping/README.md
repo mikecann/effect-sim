@@ -105,7 +105,7 @@ The editor lines its 3D camera up with each view's photo, raycasts the points on
 
 ## Checking the tool itself
 
-- `bun run test tools/mapping` (needs the venv) renders the house's real strings through a made-up 4K camera with hidden runs and LEDs overlapping another string's, captures through an in-memory session with a frame that comes back stale once, decodes, and checks it finds at least 98% of the LEDs that are separable in the photo (and 97% of all visible ones) within 2 px. 18 Nov 2026: 98.1% of all visible, 99.2% of separable, median error 0.13 px, 95th percentile 0.94 px, 7 of 8 overlapping LEDs found.
+- `MAPPING_E2E=1 bun run test tools/mapping` (needs the venv; skipped otherwise, as it takes about 45 s) renders the house's real strings through a made-up 4K camera with hidden runs and LEDs overlapping another string's, captures through an in-memory session with a frame that comes back stale once, decodes, and checks it finds at least 98% of the LEDs that are separable in the photo (and 97% of all visible ones) within 2 px. 18 Nov 2026: 98.1% of all visible, 99.2% of separable, median error 0.13 px, 95th percentile 0.94 px, 7 of 8 overlapping LEDs found.
 - End to end on a local backend: run HWIR with `--dry-run --local-convex-writes` (it acks without touching the lights), make a scene with `scene --project $P --out scene.json`, then `capture ... --camera synthetic:scene.json --force` (the display is off in the backup), `decode`, `verify`, `upload --finish`.
 
 ## Files
