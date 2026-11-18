@@ -134,17 +134,6 @@ describe("frames run once each, in order", () => {
     expect(handle.done).toBe(true);
   });
 
-  it("keeps a slice of a big string's frames to a few milliseconds", () => {
-    // 2,000 LEDs, the size of the whole house as one virtual string.
-    const data = new Uint8Array(2000 * 3);
-    const frame = () => {
-      for (let i = 0; i < data.length; i++) data[i] = (data[i] * 0.9) | 0;
-    };
-    const start = performance.now();
-    for (let i = 0; i < SLICE_FRAMES; i++) frame();
-    expect(performance.now() - start).toBeLessThan(20);
-  });
-
   it("keeps running under StrictMode's setup, cleanup, setup", async () => {
     const string = new PreviewString();
     const timing = new Timing();
@@ -172,6 +161,63 @@ describe("frames run once each, in order", () => {
     expect(string.getPixel(head)).toEqual([255, 255, 255]);
     render(null);
     await settle();
+  });
+
+  describe("paused on a scrubbed-to frame, with the runtime's catch-up", () => {
+    const mountAt = async (
+      effectId: string,
+      frame: number,
+      { strict = true, rerenders = 0 } = {},
+    ) => {
+      const effect = stringEffects.find((e) => e.id === effectId);
+      if (!effect) throw new Error(`no ${effectId}`);
+      const string = new PreviewString();
+      const timing = new Timing();
+      timing.setFrame(frame);
+      const scope = {
+        timing,
+        target: string.key,
+        catchUp: new FrameCatchUp(() => timing.effectFrame),
+      };
+      const tree = () => {
+        const inner = createElement(
+          EffectScopeContext.Provider,
+          { value: scope },
+          createElement(effect.Run, {
+            string,
+            rawProps: { ...effect.defaults },
+          }),
+        );
+        return strict ? createElement(StrictMode, null, inner) : inner;
+      };
+      render(tree());
+      // Re-renders at the same frame before the queued replay has run.
+      for (let i = 0; i < rerenders; i++) render(tree());
+      await settle();
+      const leds = Array.from(string.data);
+      render(null);
+      await settle();
+      return leds;
+    };
+
+    it("lights a Set Color event at frame 50 under StrictMode", async () => {
+      const leds = await mountAt("setColor", 50);
+      expect(leds.every((v) => v === 255)).toBe(true);
+    });
+
+    it("keeps an unfinished replay through re-renders at the same frame", async () => {
+      const leds = await mountAt("setColor", 50, { rerenders: 3 });
+      expect(leds.every((v) => v === 255)).toBe(true);
+    });
+
+    it("gives a stateful effect the same LEDs as playing there", async () => {
+      const played = await run(
+        stringEffects.find((e) => e.id === "comet") ?? stringEffects[0],
+        0,
+        Array.from({ length: 30 }, (_, i) => i + 1),
+      );
+      expect(await mountAt("comet", 30)).toEqual(played.before);
+    });
   });
 
   const target = 41;

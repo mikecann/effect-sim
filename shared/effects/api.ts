@@ -73,6 +73,8 @@ type CatchUpTask = {
 /** An effect's place in a catch-up: more frames can join it, or it can be dropped. */
 export type CatchUpHandle = {
   readonly done: boolean;
+  /** The last frame queued. */
+  readonly to: number;
   extendTo(frame: number): void;
   cancel(): void;
 };
@@ -119,6 +121,9 @@ export class FrameCatchUp {
       queueMicrotask(() => this.slice());
     }
     return {
+      get to() {
+        return task.to;
+      },
       get done() {
         return task.cancelled || task.next > task.to;
       },
@@ -236,18 +241,24 @@ export const framesToRun = (
  */
 export function useEffectFrame(handler: (frame: EffectFrame) => void): void {
   const { timing, target, catchUp } = useEffectScope();
-  const last = useRef<number | null>(null);
+  // The last frame actually run, apart from frames queued to run.
+  const done = useRef<number | null>(null);
   const pending = useRef<CatchUpHandle | null>(null);
-  // A replay queued before the effect unmounted (the runtime starting over)
-  // must not write to the LEDs after it's gone. Set again on every setup, as
-  // StrictMode sets effects up, cleans them up and sets them up again.
-  const mounted = useRef(true);
+  // Queued frames run the newest handler (a re-render makes a new one).
+  const latest = useRef(handler);
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+    latest.current = handler;
+  }, [handler]);
+  // Unmounting drops queued frames, so a replay never writes after the
+  // effect is gone. StrictMode's setup, cleanup, setup then queues them
+  // again from `done`, so nothing is lost.
+  useEffect(
+    () => () => {
+      pending.current?.cancel();
+      pending.current = null;
+    },
+    [],
+  );
   useEffect(
     () =>
       autorun(() => {
@@ -255,29 +266,30 @@ export function useEffectFrame(handler: (frame: EffectFrame) => void): void {
         // Read, not followed: a new loop shows up as the frame going back.
         const loopCount = untracked(() => timing.loopCount);
         const run = (f: number) => {
-          if (mounted.current) handler(frameOf(timing, target, f, loopCount));
+          latest.current(frameOf(timing, target, f, loopCount));
+          done.current = f;
         };
-        const starting = last.current === null;
-        const goingOn = last.current !== null && frame > last.current;
-        // Still catching up: new frames queue behind the replay.
-        if (goingOn && pending.current && !pending.current.done) {
-          pending.current.extendTo(Math.min(frame, timing.duration));
-          last.current = frame;
-          return;
+        const queued = pending.current;
+        if (queued && !queued.done) {
+          // Still catching up: this frame and later ones queue behind.
+          if (frame >= queued.to) {
+            queued.extendTo(Math.min(frame, timing.duration));
+            return;
+          }
+          // Back before the end of the queue: start again from what's run.
+          queued.cancel();
         }
-        if (!goingOn) pending.current?.cancel();
-        const frames = framesToRun(last.current, frame, timing.duration);
-        last.current = frame;
+        const frames = framesToRun(done.current, frame, timing.duration);
         if (!frames) return;
-        // A replay, or an effect just mounting, waits for the others
-        // mounting with it, so they all run in playing order.
-        if ((frames.to > frames.from || starting) && catchUp) {
+        // A replay, or an effect just starting, waits for the others
+        // starting with it, so they all run in playing order.
+        if ((frames.to > frames.from || done.current === null) && catchUp) {
           pending.current = catchUp.add(frame, frames.from, frames.to, run);
           return;
         }
         for (let f = frames.from; f <= frames.to; f++) run(f);
       }),
-    [timing, target, catchUp, handler],
+    [timing, target, catchUp],
   );
 }
 
