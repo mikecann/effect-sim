@@ -4,7 +4,11 @@ import type { Id } from "./_generated/dataModel";
 import type { DatabaseReader } from "./_generated/server";
 import { editorMutation, hwirMutation } from "./auth";
 import { displayControl, mappingSession } from "./machines";
-import { mappingPatternValidator, stringPositionsValidator } from "./schema";
+import {
+  mappingPatternValidator,
+  mappingViewValidator,
+  stringPositionsValidator,
+} from "./schema";
 
 // Camera mapping sessions (convex/mappingSession.ts). The editor drives a
 // session; HWIR shows its patterns and acknowledges each one.
@@ -123,6 +127,58 @@ export const discard = editorMutation({
   args: sessionArgs,
   handler: async (ctx, { sessionId }) =>
     await mappingSession.send(ctx, sessionId, { type: "DISCARD" }),
+});
+
+/** A URL to upload one photo to file storage (tools/mapping `upload`). */
+export const generateUploadUrl = editorMutation({
+  args: {},
+  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+});
+
+/**
+ * Adds one camera viewpoint's 2D points and photos to a session, replacing a
+ * view of the same name (and deleting its old photos). Works while capturing,
+ * so several viewpoints can go into one session, and while solving.
+ */
+export const addView = editorMutation({
+  args: { ...sessionArgs, view: mappingViewValidator },
+  handler: async (ctx, { sessionId, view }) => {
+    const row = await ctx.db.get("mappingSessions", sessionId);
+    if (!row)
+      throw new ConvexError({ code: "NOT_FOUND", message: "No such session." });
+    if (row.state.kind !== "capturing" && row.state.kind !== "solving")
+      throw new ConvexError({
+        code: "NOT_ACCEPTED",
+        message: `The session is ${row.state.kind}; views go in while capturing or solving.`,
+      });
+    const views = row.views ?? [];
+    const replaced = views.find((existing) => existing.name === view.name);
+    if (replaced)
+      for (const id of [replaced.photo, replaced.darkPhoto])
+        if (id && id !== view.photo && id !== view.darkPhoto)
+          await ctx.storage.delete(id);
+    await ctx.db.patch("mappingSessions", sessionId, {
+      views: [...views.filter((existing) => existing !== replaced), view],
+    });
+  },
+});
+
+/** A session's camera views, with URLs for their photos. */
+export const views = query({
+  args: sessionArgs,
+  handler: async (ctx, { sessionId }) => {
+    const row = await ctx.db.get("mappingSessions", sessionId);
+    if (!row) return null;
+    return await Promise.all(
+      (row.views ?? []).map(async (view) => ({
+        ...view,
+        photoUrl: await ctx.storage.getUrl(view.photo),
+        darkPhotoUrl: view.darkPhoto
+          ? await ctx.storage.getUrl(view.darkPhoto)
+          : null,
+      })),
+    );
+  },
 });
 
 /** The project's running session (capturing, solving or in review), or null. */

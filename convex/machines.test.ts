@@ -364,4 +364,53 @@ describe("mappingSession", () => {
       id: "sparkles",
     });
   });
+
+  test("views are added while capturing, replaced by name, and refused once in review", async () => {
+    const { t, sessionId, send } = await setupMapping();
+    const upload = async () =>
+      await t.run(async (ctx) => await ctx.storage.store(new Blob(["jpeg"])));
+    const view = async (name: string, u: number) => ({
+      name,
+      uploadedAt: 1,
+      photo: await upload(),
+      imageWidth: 100,
+      imageHeight: 50,
+      strings: [
+        { nodeKey: "s1", points: [{ u, v: 0.5, confidence: 0.9 }, null] },
+      ],
+    });
+    const views = () => t.query(api.mapping.views, { sessionId });
+
+    await t.mutation(api.mapping.addView, {
+      ...send.editor,
+      view: await view("front", 0.1),
+    });
+    const replaced = await view("front", 0.2);
+    await t.mutation(api.mapping.addView, { ...send.editor, view: replaced });
+    await t.mutation(api.mapping.addView, {
+      ...send.editor,
+      view: await view("side", 0.3),
+    });
+    const listed = await views();
+    expect(listed?.map((v) => [v.name, v.strings[0].points[0]?.u])).toEqual([
+      ["front", 0.2],
+      ["side", 0.3],
+    ]);
+    expect(listed?.[0].photoUrl).toBeTruthy();
+    // The replaced view's photo is gone from storage.
+    expect(
+      await t.run(
+        async (ctx) => (await ctx.db.system.query("_storage").collect()).length,
+      ),
+    ).toBe(2);
+
+    await t.mutation(api.mapping.captured, send.editor);
+    await t.mutation(api.mapping.solved, { ...send.editor, proposed: [] });
+    await expect(
+      t.mutation(api.mapping.addView, {
+        ...send.editor,
+        view: await view("late", 0.4),
+      }),
+    ).rejects.toThrow(/review/);
+  });
 });

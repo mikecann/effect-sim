@@ -16,7 +16,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mapping": "bun tools/mapping/cli.ts"
   },
   "dependencies": {
     "@convex-dev/state-machines": "file:vendor/convex-dev-state-machines-0.1.3-viewer.tgz",
