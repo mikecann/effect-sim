@@ -1,5 +1,5 @@
 import { ColorInput } from "@mantine/core";
-import type { ColorProp } from "../../../common/props/inspectableProps";
+import type { ColorProp } from "../../../../shared/effects/inspectableProps";
 
 type ColorPropEditorProps = {
   label: string;

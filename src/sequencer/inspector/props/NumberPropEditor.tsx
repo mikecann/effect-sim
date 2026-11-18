@@ -1,5 +1,5 @@
 import { NumberInput } from "@mantine/core";
-import type { NumberProp } from "../../../common/props/inspectableProps";
+import type { NumberProp } from "../../../../shared/effects/inspectableProps";
 import { useAdaptiveStep } from "../../../common/hooks/useAdaptiveStep";
 
 type NumberPropEditorProps = {

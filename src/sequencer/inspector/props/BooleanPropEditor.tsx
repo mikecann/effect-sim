@@ -1,5 +1,5 @@
 import { Checkbox } from "@mantine/core";
-import type { BooleanProp } from "../../../common/props/inspectableProps";
+import type { BooleanProp } from "../../../../shared/effects/inspectableProps";
 
 type BooleanPropEditorProps = {
   label: string;

@@ -4,7 +4,7 @@ import { StringPropEditor } from "./StringPropEditor";
 import { BooleanPropEditor } from "./BooleanPropEditor";
 import { RangePropEditor } from "./RangePropEditor";
 import type { z } from "zod";
-import { inspectableProps } from "../../../common/props/inspectableProps";
+import { inspectableProps } from "../../../../shared/effects/inspectableProps";
 
 type PropEditorProps = {
   propName: string;

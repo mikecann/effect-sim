@@ -1,11 +1,15 @@
-import { produceLiteral } from "../../../shared/misc";
 import { TurnOn } from "./switch/TurnOn";
 import { TurnOff } from "./switch/TurnOff";
 import { Toggle } from "./switch/Toggle";
 import { TurnOnThenOff } from "./switch/TurnOnThenOff";
 import { TurnOffThenOn } from "./switch/TurnOffThenOn";
 import { z } from "zod";
-import { inspectableProps } from "../props/inspectableProps";
+import {
+  switchEffectDefinitionIds,
+  switchEffectProps as effectProps,
+} from "../../../shared/effects/props";
+
+export { switchEffectDefinitionIds };
 import type { SwitchNodeModel } from "../../../shared/models/SwitchNodeModel";
 
 export type SwitchEffectComponent = React.ComponentType<{
@@ -20,25 +24,6 @@ export interface SwitchEffectDefinition {
   props?: z.ZodObject<z.ZodRawShape>;
   defaultProps?: z.infer<(typeof effectProps)[keyof typeof effectProps]>;
 }
-
-export const switchEffectDefinitionIds = produceLiteral([
-  "turnOn",
-  "turnOff",
-  "toggle",
-  "turnOnThenOff",
-  "turnOffThenOn",
-]);
-
-const effectProps = {
-  turnOn: z.object({}),
-  turnOff: z.object({}),
-  toggle: z.object({}),
-  turnOnThenOff: z.object({}),
-  turnOffThenOn: z.object({}),
-} satisfies Record<
-  keyof typeof switchEffectDefinitionIds,
-  z.ZodObject<z.ZodRawShape>
->;
 
 export const switchEffectDefinitions = {
   turnOn: {

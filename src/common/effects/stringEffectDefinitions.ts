@@ -1,7 +1,11 @@
-import { produceLiteral } from "../../../shared/misc";
 import { RainbowRandom } from "./string/RainbowRandom";
 import { z } from "zod";
-import { inspectableProps } from "../props/inspectableProps";
+import {
+  stringEffectDefinitionIds,
+  stringEffectProps as effectProps,
+} from "../../../shared/effects/props";
+
+export { stringEffectDefinitionIds };
 import { Sparkle } from "./string/Sparkle";
 import { SetColor } from "./string/SetColor";
 import { MultiplyAll } from "./string/MultiplyAll";
@@ -33,130 +37,6 @@ export interface StringEffectDefinition {
   props?: z.ZodObject<z.ZodRawShape>;
   defaultProps?: z.infer<(typeof effectProps)[keyof typeof effectProps]>;
 }
-
-export const stringEffectDefinitionIds = produceLiteral([
-  "rainbowRandom",
-  "rainbowWave",
-  "sparkle",
-  "setColor",
-  "multiplyAll",
-  "comet",
-  "bouncingComet",
-  "pulse",
-  "twinkle",
-  "fireflies",
-  "fadeTo",
-  "aurora",
-  "fire",
-  "fireworks",
-  "cycleSine",
-  "lightning",
-  "plasma",
-  "bouncingBalls",
-]);
-
-const effectProps = {
-  rainbowRandom: z.object({
-    delayMs: inspectableProps.number,
-  }),
-  rainbowWave: z.object({
-    speed: inspectableProps.number,
-    wavelength: inspectableProps.number,
-  }),
-  sparkle: z.object({
-    color: inspectableProps.color,
-    sparklesPerFrame: inspectableProps.number,
-  }),
-  setColor: z.object({
-    color: inspectableProps.color,
-  }),
-  multiplyAll: z.object({
-    multiplier: inspectableProps.number,
-  }),
-  comet: z.object({
-    color: inspectableProps.color,
-    size: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
-  }),
-  bouncingComet: z.object({
-    color: inspectableProps.color,
-    size: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
-    numBounces: inspectableProps.number,
-  }),
-  pulse: z.object({
-    fromColor: inspectableProps.color,
-    toColor: inspectableProps.color,
-    speed: inspectableProps.number,
-  }),
-  twinkle: z.object({
-    fromColor: inspectableProps.color,
-    toColor: inspectableProps.color,
-    speed: inspectableProps.number,
-    ratioOfLedsToApplyTo: inspectableProps.number,
-  }),
-  fireflies: z.object({
-    color: inspectableProps.color,
-    numFireflies: inspectableProps.number,
-    speed: inspectableProps.number,
-    fadeRatio: inspectableProps.number,
-    minTravelDistance: inspectableProps.number,
-    maxTravelDistance: inspectableProps.number,
-  }),
-  fadeTo: z.object({
-    color: inspectableProps.color,
-    fadeSpeed: inspectableProps.number,
-  }),
-  aurora: z.object({
-    speed: inspectableProps.number,
-    intensity: inspectableProps.number,
-    colorSpread: inspectableProps.number,
-  }),
-  fire: z.object({
-    cooling: inspectableProps.number,
-    sparking: inspectableProps.number,
-    intensity: inspectableProps.number,
-  }),
-  fireworks: z.object({
-    frequency: inspectableProps.number,
-    speed: inspectableProps.number,
-    size: inspectableProps.number,
-    intensity: inspectableProps.number,
-  }),
-  cycleSine: z.object({
-    color1: inspectableProps.color,
-    color2: inspectableProps.color,
-    color3: inspectableProps.color,
-    speed: inspectableProps.number,
-    spread: inspectableProps.number,
-    waveSpeed: inspectableProps.number,
-    wavelength: inspectableProps.number,
-    waveAmplitude: inspectableProps.number,
-  }),
-  lightning: z.object({
-    strikeChance: inspectableProps.number,
-    intensity: inspectableProps.number,
-    fadeSpeed: inspectableProps.number,
-    minSpread: inspectableProps.number,
-    maxSpread: inspectableProps.number,
-  }),
-  plasma: z.object({
-    color: inspectableProps.color,
-    speed: inspectableProps.number,
-    scale: inspectableProps.number,
-    complexity: inspectableProps.number,
-    intensity: inspectableProps.number,
-  }),
-  bouncingBalls: z.object({
-    numBalls: inspectableProps.number,
-    speed: inspectableProps.number,
-    size: inspectableProps.number,
-    intensity: inspectableProps.number,
-  }),
-} satisfies Record<
-  keyof typeof stringEffectDefinitionIds,
-  z.ZodObject<z.ZodRawShape>
->;
 
 export const stringEffectDefinitions = {
   rainbowRandom: {
