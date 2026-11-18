@@ -79,3 +79,10 @@ Production can't take the new schema straight away (its rows have no keys), so t
 8. **Reinstall the Lights app** with `ios/Secrets.xcconfig` holding `LIGHTS_REMOTE_TOKEN` (`ios/scripts/install-phone.sh`).
 9. **Open the editor** and paste `EDITOR_TOKEN` into its token modal.
 10. **Require tokens**: once the Convex logs stop showing "came without a token" warnings, set `REQUIRE_TOKENS=true`.
+
+## Mapping (Phase 3)
+
+- LED codes are defined once in `shared/mapping/ledCodes.ts`: strings in key order, LEDs in index order, codes from 1. HWIR renders patterns with `isLit`, and the capture tool decodes with `ledOfCode`. Neither side defines its own scheme.
+- The capture flow: start a mapping session (the display switches to mapping mode), take a dark frame and an all-on frame, then for each bit a normal and an inverted frame, waiting for HWIR's `shownSeq` ack before each photo. Decode each pixel cluster's code from the bit pairs, which gives every LED a 2D point (u, v in 0..1 image space) with a confidence. Use single-LED and single-string patterns to check and fill gaps.
+- 2D to 3D happens in the editor: the session's photo is overlaid on the 3D view, the camera is lined up with it (by hand or from a few picked correspondences), and each 2D point is raycast onto the house mesh with the existing placer raycast. The result is proposed for review (`mappingSession` review state), then applied as `ledPositions`.
+- Virtual strings (Top Stairs, Spirals, Flowers...) are redrawn in the editor afterwards, by selecting LED ranges on the mapped strings.
