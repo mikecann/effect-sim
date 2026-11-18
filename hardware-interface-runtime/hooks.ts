@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type {
@@ -14,12 +14,16 @@ import { plugConfigured, readPlug, switchPlug } from "./homeAssistant";
 import { hwirToken } from "./token";
 import { readCommit } from "./utils/commit";
 import { HEARTBEAT_INTERVAL_MS } from "../convex/hwirPresence";
-import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
+import { followPlug, PlugSwitcher, type PlugStatus } from "./display/plug";
 
-type TokenMutation = FunctionReference<"mutation", "public", { token?: string }>;
+type TokenMutation = FunctionReference<
+  "mutation",
+  "public",
+  { token?: string }
+>;
 
 /** useMutation for HWIR's mutations: adds HWIR_TOKEN to every call. */
-const useHwirMutation = <M extends TokenMutation>(mutation: M) => {
+export const useHwirMutation = <M extends TokenMutation>(mutation: M) => {
   const run = useMutation(mutation);
   return useCallback(
     (args: Omit<FunctionArgs<M>, "token">) =>
@@ -79,6 +83,7 @@ export const useDisplayControl = (model: HWIRAppModel) => {
   );
   const boot = useHwirMutation(api.display.boot);
   const applied = useHwirMutation(api.display.applied);
+  const plug = usePlugSwitcher(model);
 
   // First run for this project: record what the startup flags play, so the
   // remote has something to change.
@@ -101,10 +106,12 @@ export const useDisplayControl = (model: HWIRAppModel) => {
   }, [model, control]);
 
   // Runs after the render that applied the new settings, so the confirmation
-  // means the lights really are playing them. The plug is switched first: if
-  // that fails there's no confirmation, and the phone says it's offline.
+  // means the LEDs really are showing them. The plug gets one try first; if
+  // that fails the LED side is confirmed anyway and the plug keeps retrying
+  // in the background (reported in the heartbeat), so the phone doesn't say
+  // the lights are offline because of the plug.
   const requestedAt = control?.requestedAt ?? null;
-  const lastPlugSwitchAt = useRef(0);
+  const appliedRequestedAt = useRef<number | null>(null);
   useEffect(() => {
     if (requestedAt === null) return;
     const s = control?.settings;
@@ -113,51 +120,107 @@ export const useDisplayControl = (model: HWIRAppModel) => {
       `Remote: ${s.isOn ? "on" : "off"}, ${s.mode.kind} ${s.mode.id}, brightness ${s.brightness}`,
     );
     void (async () => {
+      if (plug.switcher) await plug.switchTo(s.isOn);
       try {
-        if (plugConfigured) {
-          lastPlugSwitchAt.current = Date.now();
-          await switchPlug(s.isOn);
-        }
         await applied({ projectId, requestedAt });
       } catch (e) {
-        logger.error(`Error applying display change: ${e}`);
+        logger.error(`Error confirming display change: ${e}`);
+      } finally {
+        appliedRequestedAt.current = requestedAt;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per request: control changes on every status update, and confirming it twice would be wrong.
   }, [requestedAt]);
 
-  usePlugFollower(model, control, lastPlugSwitchAt);
+  usePlugFollower(model, control, plug, appliedRequestedAt);
+};
+
+/** After HWIR switches the plug, Home Assistant may lag this long. */
+const PLUG_SETTLE_MS = 30_000;
+
+type PlugHandle = ReturnType<typeof usePlugSwitcher>;
+
+/** The plug switcher (null without Home Assistant), and when HWIR last switched it. */
+const usePlugSwitcher = (model: HWIRAppModel) => {
+  const [handle] = useState(() => {
+    const switcher = plugConfigured
+      ? new PlugSwitcher(switchPlug, (status) => {
+          if (status.kind === "ok")
+            logger.info(`The lights' plug is ${status.on ? "on" : "off"}`);
+          else
+            logger.error(
+              `Couldn't switch the lights' plug ${status.on ? "on" : "off"} (try ${status.tries}): ${status.error}; retrying`,
+            );
+        })
+      : null;
+    const h = {
+      switcher,
+      lastSwitchAt: 0,
+      switchTo: async (on: boolean) => {
+        h.lastSwitchAt = Date.now();
+        await switcher?.switchTo(on);
+      },
+      get busy() {
+        return (
+          Boolean(switcher?.busy) ||
+          Date.now() - h.lastSwitchAt < PLUG_SETTLE_MS
+        );
+      },
+    };
+    return h;
+  });
+  useEffect(() => {
+    model.setPlugStatus(() => handle.switcher?.status ?? null);
+  }, [model, handle]);
+  return handle;
 };
 
 /**
- * Home Assistant switches the plug too (sunset on, 10pm off), so every 10 s
- * check it and move on/off to match when they disagree. Skipped for 30 s
- * after HWIR switched the plug itself, while Home Assistant catches up.
+ * Every 10 s, in every display state (plug/followPlug): re-sends a
+ * confirmation that was lost, and when the display is live and Home
+ * Assistant switched the plug (sunset on, 10pm off), moves on/off to match.
  */
 const usePlugFollower = (
   model: HWIRAppModel,
   control: FunctionReturnType<typeof api.display.get> | undefined,
-  lastPlugSwitchAt: { current: number },
+  plug: PlugHandle,
+  appliedRequestedAt: { current: number | null },
 ) => {
   const { projectId } = model.startupSettings;
   const plugSwitched = useHwirMutation(api.display.plugSwitched);
+  const applied = useHwirMutation(api.display.applied);
   const latest = useRef(control);
   useEffect(() => {
     latest.current = control;
   }, [control]);
 
   useEffect(() => {
-    if (!plugConfigured || !model.startupSettings.playlistId) return;
+    if (!model.startupSettings.playlistId) return;
     const check = async () => {
       const c = latest.current;
-      if (!c || c.status !== "live") return;
-      if (Date.now() - lastPlugSwitchAt.current < 30_000) return;
-      const plugOn = await readPlug();
-      if (plugOn === null || plugOn === c.settings.isOn) return;
-      logger.info(
-        `The lights' plug was switched ${plugOn ? "on" : "off"} outside the app`,
-      );
-      await plugSwitched({ projectId, isOn: plugOn });
+      if (!c) return;
+      const plugOn =
+        plug.switcher && c.status === "live" && !plug.busy
+          ? await readPlug()
+          : null;
+      const action = followPlug({
+        status: c.status,
+        isOn: c.settings.isOn,
+        requestedAt: c.requestedAt,
+        plugOn,
+        plugBusy: plug.busy,
+        appliedRequestedAt: appliedRequestedAt.current,
+      });
+      if (action.kind === "confirm") {
+        logger.info(`Confirming the display change again (it's ${c.status})`);
+        await applied({ projectId, requestedAt: action.requestedAt });
+      }
+      if (action.kind === "report") {
+        logger.info(
+          `The lights' plug was switched ${action.isOn ? "on" : "off"} outside the app`,
+        );
+        await plugSwitched({ projectId, isOn: action.isOn });
+      }
     };
     const timer = setInterval(() => {
       check().catch((e) =>
@@ -165,13 +228,14 @@ const usePlugFollower = (
       );
     }, 10_000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one 10 s poll for HWIR's life; it reads the latest control through a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one 10 s check for HWIR's life; it reads the latest control through a ref.
   }, []);
 };
 
 /**
  * Tells Convex HWIR is running, every 10 s (convex/hwirPresence.ts): the
- * commit it runs, its frame rate and each string's connection.
+ * commit it runs, the frame rate it really manages, each string's connection
+ * and when it last answered, and the plug if it's set up.
  */
 export const useHeartbeat = (model: HWIRAppModel) => {
   const heartbeat = useHwirMutation(api.hwir.heartbeat);
@@ -185,17 +249,34 @@ export const useHeartbeat = (model: HWIRAppModel) => {
       heartbeat({
         projectId,
         commit,
-        fps: project.settings.defaultFramerate ?? DEFAULT_FRAMERATE,
-        strings: project.strings.map((s) => ({
-          key: s.key,
-          connection: model.connections.get(s.key) ?? "connecting",
-        })),
+        fps: Math.round((model.fpsMeter.fps(performance.now()) ?? 0) * 10) / 10,
+        strings: project.strings.map((s) => {
+          const state = model.links.get(s.key)?.state;
+          const connection = state?.kind ?? "connecting";
+          const lastSeenAt = state?.lastSeenAt ?? null;
+          return lastSeenAt === null
+            ? { key: s.key, connection }
+            : { key: s.key, connection, lastSeenAt };
+        }),
+        plug: plugReport(model.plugStatus()),
       }).catch((e) => logger.error(`Error sending heartbeat: ${e}`));
     };
     beat();
     const timer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [model, projectId, heartbeat]);
+};
+
+const plugReport = (status: PlugStatus | null) => {
+  if (!status) return undefined;
+  if (status.kind === "ok")
+    return { ok: true, on: status.on, since: status.at };
+  return {
+    ok: false,
+    on: status.on,
+    since: status.since,
+    error: status.error,
+  };
 };
 
 /**

@@ -9,7 +9,7 @@ export type FrameContextValue = {
   frameMs: number;
 };
 
-const FrameContext = createContext<FrameContextValue | null>(null);
+export const FrameContext = createContext<FrameContextValue | null>(null);
 
 export const FrameProvider = observer(
   ({ children, fps = 60 }: { children: ReactNode; fps?: number }) => {
