@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as crons from "../crons.js";
 import type * as display from "../display.js";
 import type * as displayControl from "../displayControl.js";
 import type * as editor from "../editor.js";
@@ -33,6 +34,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  crons: typeof crons;
   display: typeof display;
   displayControl: typeof displayControl;
   editor: typeof editor;
