@@ -15,7 +15,7 @@ export function PlaylistRow({ playlist }: PlaylistRowProps) {
 
   const isSelected =
     appModel.selectedEntity?.kind === "playlist" &&
-    appModel.selectedEntity.playlist._id === playlist._id;
+    appModel.selectedEntity.playlist.key === playlist.key;
 
   const isOnlySelected = isSelected;
 
@@ -78,6 +78,7 @@ export function PlaylistRow({ playlist }: PlaylistRowProps) {
             variant="subtle"
             color="red"
             aria-label="Delete playlist"
+            // eslint-disable-next-line mikecann-lint/click-shows-progress -- the confirmation opens at once, and the delete is optimistic (it saves in the background, shown in the menu bar).
             onClick={async (e) => {
               e.stopPropagation();
               const confirmed = await confirm({
@@ -88,7 +89,6 @@ export function PlaylistRow({ playlist }: PlaylistRowProps) {
               });
               if (!confirmed) return;
               project.removePlaylist(playlist);
-              //playlist.remove();
               if (isSelected) appModel.setSelectedEntity(null);
             }}
           >

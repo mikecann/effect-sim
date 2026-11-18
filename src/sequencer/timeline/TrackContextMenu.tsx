@@ -1,13 +1,13 @@
 import { Menu } from "@mantine/core";
 import { useSequence } from "../SequencerContext";
-import { createTempId } from "../../../shared/models/types";
-import { stringEffectDefinitionsArray } from "../../common/effects/stringEffectDefinitions";
+import { createId } from "../../../shared/models/types";
+import { stringEffects } from "../../../shared/effects/registry";
 
 export function TrackContextMenu() {
   const sequenceUI = useSequence();
   const context = sequenceUI.contextMenu;
   const sequence = sequenceUI.sequence;
-  const defaultEffect = stringEffectDefinitionsArray[0];
+  const defaultEffect = stringEffects[0];
 
   return (
     <Menu
@@ -34,11 +34,11 @@ export function TrackContextMenu() {
         <Menu.Divider />
         <Menu.Item
           onClick={() => {
-            if (!context || !defaultEffect) return;
+            if (!context) return;
             const track = sequence.tracks.find((t) => t.id === context.trackId);
             if (!track) return;
 
-            const eventId = createTempId("sequences");
+            const eventId = createId();
             try {
               sequence.addEvent(context.trackId, {
                 id: eventId,
@@ -66,7 +66,7 @@ export function TrackContextMenu() {
             const track = sequence.tracks.find((t) => t.id === context.trackId);
             if (!track) return;
 
-            const eventId = createTempId("sequences");
+            const eventId = createId();
             try {
               sequence.addEvent(context.trackId, {
                 id: eventId,

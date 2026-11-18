@@ -1,36 +1,62 @@
-import { EffectContext } from "../../common/effects/EffectProvider";
+import { useMemo } from "react";
+import {
+  EffectScopeContext,
+  FrameCatchUp,
+  type EffectString,
+} from "../../../shared/effects/api";
+import type { StringEffect } from "../../../shared/effects/defineEffect";
 import { useLedData } from "../../data/LedDataStoreContext";
-import type { StringLedDataApi } from "../../data/StringLedDataModel";
 import { useSequenceRuntime } from "./SequenceRuntimeContext";
+import type { SequenceRuntimeEffectModel } from "./SequenceRuntimeEffectModel";
+
+/** One event's effect running on one string. */
+function StringEffectInstance({
+  effect,
+  definition,
+  string,
+  catchUp,
+}: {
+  effect: SequenceRuntimeEffectModel;
+  definition: StringEffect;
+  string: EffectString;
+  catchUp: FrameCatchUp;
+}) {
+  const scope = useMemo(
+    () => ({ timing: effect, target: string.key, catchUp }),
+    [effect, string.key, catchUp],
+  );
+  const Run = definition.Run;
+  return (
+    <EffectScopeContext value={scope}>
+      <Run string={string} rawProps={effect.rawProps} />
+    </EffectScopeContext>
+  );
+}
 
 export function StringEffectsRenderer() {
   const runtime = useSequenceRuntime();
-  const dataStore = useLedData();
-  const effects = runtime.activeStringEffects;
+  const strings = useLedData().stringsAndVirtualsMap;
+  const catchUp = useMemo(
+    () => new FrameCatchUp(() => runtime.playhead.frame),
+    [runtime],
+  );
 
   return (
     <>
-      {effects.map((effect) => {
-        const Component = effect.component as React.ComponentType<{
-          string: StringLedDataApi;
-          props?: Record<string, unknown>;
-        }>;
-
-        if (!Component) return null;
-
-        const validatedProps = effect.validatedProps;
-        const targetNodeIds = effect.targetNodeIds;
-
-        return targetNodeIds.map((nodeId) => {
-          const ledData = dataStore.stringsAndVirtualsMap.get(nodeId);
-          if (!ledData) return null;
+      {runtime.activeStringEffects.map((effect) => {
+        const definition = effect.stringEffect;
+        if (!definition) return null;
+        return effect.targetNodeIds.map((nodeId) => {
+          const string = strings.get(nodeId);
+          if (!string) return null;
           return (
-            <EffectContext
+            <StringEffectInstance
               key={`${effect.trackId}-${effect.eventId}-${nodeId}`}
-              value={effect}
-            >
-              <Component string={ledData} props={validatedProps} />
-            </EffectContext>
+              effect={effect}
+              definition={definition}
+              string={string}
+              catchUp={catchUp}
+            />
           );
         });
       })}

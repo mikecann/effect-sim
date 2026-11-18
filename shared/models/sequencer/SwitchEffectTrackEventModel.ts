@@ -1,5 +1,5 @@
 import { makeAutoObservable } from "mobx";
-import { Id } from "../../../convex/_generated/dataModel";
+import type { NodeKey } from "../docs";
 import type { TrackEvent } from "../../../convex/schema";
 import type { TrackModel } from "./TrackModel";
 
@@ -53,7 +53,7 @@ export class SwitchEffectTrackEventModel {
 
   setAppliesTo(
     appliesTo:
-      | { kind: "nodes"; nodeIds: Array<Id<"nodes">> }
+      | { kind: "nodes"; nodeIds: Array<NodeKey> }
       | { kind: "all_nodes" },
   ) {
     this.data.appliesTo = appliesTo;

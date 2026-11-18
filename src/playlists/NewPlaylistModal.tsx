@@ -1,9 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Button, Modal, Stack, TextInput } from "@mantine/core";
 import { useApp } from "../common/AppContext";
-import { PlaylistModel } from "../../shared/models/PlaylistModel";
-import { Id } from "../../convex/_generated/dataModel";
-import { createTempId } from "../../shared/models/types";
 
 export default function NewPlaylistModal({
   opened,
@@ -15,17 +12,7 @@ export default function NewPlaylistModal({
   const appModel = useApp();
   const project = appModel.getProject();
   const newPlaylist = useMemo(
-    () =>
-      new PlaylistModel(
-        {
-          name: "New Playlist",
-          projectId: project._id,
-          _creationTime: 0,
-          _id: createTempId("playlists"),
-          sequenceIds: [],
-        },
-        project,
-      ),
+    () => project.newPlaylist({ name: "New Playlist" }),
     [project],
   );
 

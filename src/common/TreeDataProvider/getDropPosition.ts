@@ -1,21 +1,21 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import type { NodesTree } from "../../../shared/nodeTree";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { findNodePath, getNodeAtPath, isFolder } from "../../../shared/nodeTree";
 
 function getParentIdFromPath(
   tree: NodesTree,
   path: number[],
-): Id<"nodes"> | null {
+): NodeKey | null {
   if (path.length <= 1) return null;
   const parentPath = path.slice(0, -1);
   const parentNode = getNodeAtPath(tree, parentPath);
-  return parentNode?._id ?? null;
+  return parentNode?.key ?? null;
 }
 
 function getSiblings(
   tree: NodesTree,
   path: number[],
-): Array<{ _id: Id<"nodes"> }> {
+): Array<{ key: NodeKey }> {
   if (path.length === 0) return tree;
   if (path.length === 1) return tree;
   const parentPath = path.slice(0, -1);
@@ -28,7 +28,7 @@ export function getDropPosition(
   nodeTree: NodesTree | null,
   targetId: string,
   target: { childIndex?: number; linearIndex?: number },
-): { parentId: Id<"nodes"> | null; index: number } {
+): { parentId: NodeKey | null; index: number } {
   if (!nodeTree) return { parentId: null, index: 0 };
 
   // Root level drop
@@ -43,7 +43,7 @@ export function getDropPosition(
 
   const targetPath = findNodePath({
     tree: nodeTree,
-    nodeId: targetId as Id<"nodes">,
+    nodeId: targetId as NodeKey,
   });
   if (targetPath === null) return { parentId: null, index: 0 };
   const targetNode = getNodeAtPath(nodeTree, targetPath);
@@ -53,7 +53,7 @@ export function getDropPosition(
   if ("childIndex" in target && target.childIndex !== undefined) {
     if (isFolder(targetNode))
       return {
-        parentId: targetId as Id<"nodes">,
+        parentId: targetId as NodeKey,
         index: target.childIndex,
       };
 
@@ -69,7 +69,7 @@ export function getDropPosition(
   if ("linearIndex" in target) {
     const parentId = getParentIdFromPath(nodeTree, targetPath);
     const siblings = getSiblings(nodeTree, targetPath);
-    const targetPos = siblings.findIndex((n) => n._id === targetId);
+    const targetPos = siblings.findIndex((n) => n.key === targetId);
     return {
       parentId,
       index: targetPos >= 0 ? targetPos + 1 : siblings.length,
@@ -79,14 +79,14 @@ export function getDropPosition(
   // Direct drop on item (no position info)
   if (isFolder(targetNode))
     return {
-      parentId: targetId as Id<"nodes">,
+      parentId: targetId as NodeKey,
       index: targetNode.children.length,
     };
 
   // Drop on string - place after it as sibling
   const parentId = getParentIdFromPath(nodeTree, targetPath);
   const siblings = getSiblings(nodeTree, targetPath);
-  const targetPos = siblings.findIndex((n) => n._id === targetId);
+  const targetPos = siblings.findIndex((n) => n.key === targetId);
 
   return {
     parentId,

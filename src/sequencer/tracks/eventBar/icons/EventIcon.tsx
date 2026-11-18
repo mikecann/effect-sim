@@ -1,10 +1,8 @@
 import type { AllTrackEventModels } from "../../../../../shared/models/sequencer";
 import { IconSparkles, IconPower, IconPalette } from "@tabler/icons-react";
-import {
-  stringEffectDefinitions,
-  stringEffectDefinitionIds,
-} from "../../../../common/effects/stringEffectDefinitions";
-import { switchEffectDefinitionIds } from "../../../../common/effects/switchEffectDefinitions";
+import { setColor } from "../../../../../shared/effects/string/setColor";
+import { sparkle } from "../../../../../shared/effects/string/sparkle";
+import { multiplyAll } from "../../../../../shared/effects/string/multiplyAll";
 import { SetColorIcon } from "./SetColorIcon";
 import { SparkleIcon } from "./SparkleIcon";
 import { MultiplyAllIcon } from "./MultiplyAllIcon";
@@ -23,39 +21,33 @@ interface EventIconProps {
 export function EventIcon({ event, color, size = 14 }: EventIconProps) {
   if (event.kind === "string_effect") {
     // Custom icons for specific string effects
-    if (event.effectDefinitionId === stringEffectDefinitionIds.setColor)
+    if (event.effectDefinitionId === setColor.id)
       return (
         <SetColorIcon
           color={color}
           size={size}
-          props={
-            event.props as { color?: [number, number, number] } | undefined
-          }
+          props={setColor.resolveProps(event.props)}
         />
       );
 
-    if (event.effectDefinitionId === stringEffectDefinitionIds.sparkle)
+    if (event.effectDefinitionId === sparkle.id)
       return (
         <SparkleIcon
           color={color}
           size={size}
-          props={
-            event.props as
-              | { color?: [number, number, number]; sparklesPerFrame?: number }
-              | undefined
-          }
+          props={sparkle.resolveProps(event.props)}
         />
       );
 
-    if (event.effectDefinitionId === stringEffectDefinitionIds.rainbowRandom)
+    if (event.effectDefinitionId === "rainbowRandom")
       return <IconPalette size={size} style={{ color }} />;
 
-    if (event.effectDefinitionId === stringEffectDefinitionIds.multiplyAll)
+    if (event.effectDefinitionId === multiplyAll.id)
       return (
         <MultiplyAllIcon
           color={color}
           size={size}
-          props={event.props as { multiplier?: number } | undefined}
+          props={multiplyAll.resolveProps(event.props)}
         />
       );
 
@@ -65,19 +57,19 @@ export function EventIcon({ event, color, size = 14 }: EventIconProps) {
 
   if (event.kind === "switch_effect") {
     // Custom icons for specific switch effects
-    if (event.effectDefinitionId === switchEffectDefinitionIds.turnOn)
+    if (event.effectDefinitionId === "turnOn")
       return <TurnOnIcon color={color} size={size} />;
 
-    if (event.effectDefinitionId === switchEffectDefinitionIds.turnOff)
+    if (event.effectDefinitionId === "turnOff")
       return <TurnOffIcon color={color} size={size} />;
 
-    if (event.effectDefinitionId === switchEffectDefinitionIds.toggle)
+    if (event.effectDefinitionId === "toggle")
       return <ToggleIcon color={color} size={size} />;
 
-    if (event.effectDefinitionId === switchEffectDefinitionIds.turnOnThenOff)
+    if (event.effectDefinitionId === "turnOnThenOff")
       return <TurnOnThenOffIcon color={color} size={size} />;
 
-    if (event.effectDefinitionId === switchEffectDefinitionIds.turnOffThenOn)
+    if (event.effectDefinitionId === "turnOffThenOn")
       return <TurnOffThenOnIcon color={color} size={size} />;
 
     // Default icon for switch effects

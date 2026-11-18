@@ -22,7 +22,7 @@ export function useDeleteSelectedNodes() {
     if (!shouldDelete) return;
 
     for (const id of selectedNodeIds) {
-      const node = project.nodes.find((n) => n._id === id);
+      const node = project.nodes.find((n) => n.key === id);
       if (node) node.remove();
     }
 

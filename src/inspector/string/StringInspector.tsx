@@ -12,7 +12,7 @@ export const StringInspector = ({ node }: { node: StringNodeModel }) => {
       variant="contained"
       styles={{
         panel: {
-          backgroundColor: "var(--color-tabset-background)",
+          backgroundColor: "var(--fl-color-tabset-background)",
         },
         control: {
           paddingTop: 0,

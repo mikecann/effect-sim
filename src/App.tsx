@@ -1,5 +1,6 @@
 import { Notifications } from "@mantine/notifications";
 import { LedDataDispatcher } from "./data/LedDataDispatcher";
+import { DevHooks } from "./common/DevHooks";
 import type { TabNode } from "flexlayout-react";
 import { Layout } from "flexlayout-react";
 import MenuBar from "./common/MenuBar";
@@ -13,6 +14,7 @@ import { StringSegmentRangeInstantIndicator } from "./inspector/virtualString/St
 import SequencerPanel from "./sequencer/SequencerPanel.tsx";
 import NodesTreePanel from "./nodesTree/NodesTreePanel.tsx";
 import SimulatorPanel from "./simulator/SimulatorPanel.tsx";
+import MappingPanel from "./mapping/MappingPanel.tsx";
 
 export default function App() {
   const app = useApp();
@@ -48,6 +50,7 @@ export default function App() {
                   return <NodesTreePanel id={node.getId()} />;
                 if (component === "playlists") return <PlaylistsPanel />;
                 if (component === "inspector") return <InspectorPanel />;
+                if (component === "mapping") return <MappingPanel />;
                 if (component === "sequencer")
                   return <SequencerPanel id={node.getId()} />;
 
@@ -59,6 +62,7 @@ export default function App() {
         </div>
         <Notifications />
         <LedDataDispatcher />
+        <DevHooks />
 
         {import.meta.env.VITE_IS_DEV_MODE ? (
           <StringSegmentRangeInstantIndicator />

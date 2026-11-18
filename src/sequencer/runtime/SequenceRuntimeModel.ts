@@ -1,8 +1,6 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { SwitchNodeModel } from "../../../shared/models/SwitchNodeModel";
-import type { StringNodeModel } from "../../../shared/models/StringNodeModel";
-import type { VirtualStringNodeModel } from "../../../shared/models/VirtualStringNodeModel";
 import { SequenceRuntimeEffectModel } from "./SequenceRuntimeEffectModel";
 import { PlayheadModel } from "./PlayheadModel";
 import { ProjectModel } from "../../../shared/models/ProjectModel";
@@ -24,6 +22,9 @@ export class SequenceRuntimeModel {
     this.sequence = sequence;
   }
 
+  /** The frame last jumped to, while the effects replay up to it. */
+  private replayFrame: number | null = null;
+
   activeEffects: SequenceRuntimeEffectModel[] = [];
   private activeEffectsById = new Map<string, SequenceRuntimeEffectModel>();
 
@@ -36,12 +37,20 @@ export class SequenceRuntimeModel {
     }
 
     const currentFrame = this.playhead.frame;
+    // On the frame jumped to, string events that already ended play too, so
+    // their replay leaves the LEDs as playing would have (useEffectFrame
+    // stops each at its last frame). From the next frame they drop out.
+    const replaying = this.replayFrame === currentFrame;
     const newActiveEventIds = new Set<string>();
 
-    // Find which events are currently active
     for (const track of this.sequence.trackModels)
       for (const event of track.events)
-        if (currentFrame >= event.startFrame && currentFrame < event.endFrame)
+        if (
+          currentFrame >= event.startFrame &&
+          (currentFrame < event.endFrame ||
+            // Never switches: replaying one would call a real plug again.
+            (replaying && event.kind === "string_effect"))
+        )
           newActiveEventIds.add(event.id);
 
     // Check if the set of active events changed
@@ -78,37 +87,37 @@ export class SequenceRuntimeModel {
     return this.activeEffects.filter((e) => e.kind === "switch");
   }
 
-  private get allStringNodes(): StringNodeModel[] {
-    return (this.project?.getNodesByKind("string") as StringNodeModel[]) ?? [];
-  }
-
-  private get allVirtualStringNodes(): VirtualStringNodeModel[] {
-    return (
-      (this.project?.getNodesByKind(
-        "virtual_string",
-      ) as VirtualStringNodeModel[]) ?? []
-    );
-  }
-
-  get allStringNodeIds(): Id<"nodes">[] {
+  /** Every string and virtual string, for events that apply to all. */
+  get allStringNodeIds(): NodeKey[] {
+    const project = this.project;
+    if (!project) return [];
     return [
-      ...this.allStringNodes.map((n) => n._id),
-      ...this.allVirtualStringNodes.map((n) => n._id),
+      ...project.strings.map((n) => n.key),
+      ...project.virtualStrings.map((n) => n.key),
     ];
   }
 
   private get allSwitchNodes(): SwitchNodeModel[] {
-    return (this.project?.getNodesByKind("switch") as SwitchNodeModel[]) ?? [];
+    return this.project?.getNodesByKind("switch") ?? [];
   }
 
-  get allSwitchNodeIds(): Id<"nodes">[] {
-    return this.allSwitchNodes.map((n) => n._id);
+  get allSwitchNodeIds(): NodeKey[] {
+    return this.allSwitchNodes.map((n) => n.key);
   }
 
-  get switchNodesMap(): Map<Id<"nodes">, SwitchNodeModel> {
-    const map = new Map<Id<"nodes">, SwitchNodeModel>();
-    for (const node of this.allSwitchNodes) map.set(node._id, node);
-    return map;
+  get switchNodesMap(): Map<NodeKey, SwitchNodeModel> {
+    return new Map(this.allSwitchNodes.map((node) => [node.key, node]));
+  }
+
+  /**
+   * Puts the playhead somewhere by hand (scrubbing). The events playing there
+   * are worked out at once, so the effects remount together and replay as
+   * one (SequenceRuntime.tsx).
+   */
+  jumpTo(frame: number) {
+    this.replayFrame = frame;
+    this.playhead.jumpTo(frame);
+    this.updateActiveEffects();
   }
 
   incrementLoopCount() {

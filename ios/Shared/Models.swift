@@ -6,9 +6,12 @@ import Foundation
 enum ModeKind: String, Codable, Hashable, Sendable {
     case playlist
     case sequence
+    /// The editor is camera mapping the LEDs; the phone can't pick this.
+    case mapping
 }
 
-/// Which playlist or sequence is playing, as the backend stores it.
+/// Which playlist or sequence is playing, as the backend stores it. `id` is
+/// the playlist's or sequence's key (for mapping, the session's id).
 struct ModeRef: Codable, Hashable, Sendable {
     var kind: ModeKind
     var id: String

@@ -2,8 +2,13 @@ import { Canvas } from "@react-three/fiber";
 import { GardenModel } from "./rendering/GardenModel.tsx";
 import SideToolbar from "./ui/SideToolbar.tsx";
 import MeasureTool from "./measure/MeasureTool.tsx";
-import { SimulatorContext, useSimulator } from "./SimulatorContext";
+import { SimulatorContext } from "./SimulatorContext";
 import MeasureStatus from "./measure/MeasureStatus.tsx";
+import { PlacementStatus } from "./placing/PlacementStatus.tsx";
+import { MappingScene } from "../mapping/MappingScene.tsx";
+import { PhotoOverlay } from "../mapping/PhotoOverlay.tsx";
+import { RangePickStatus } from "./ui/RangePickStatus.tsx";
+import { DevCanvasHooks } from "../common/DevHooks.tsx";
 import StringPlacer from "./placing/StringPlacer.tsx";
 import StringsRenderer from "./StringsRenderer.tsx";
 import { NightModeMultiCameraPass } from "./rendering/NightModeMultiCameraPass.tsx";
@@ -53,7 +58,7 @@ export default function SimulatorPanel({ id }: { id: string }) {
           onPointerMissed={(e) => {
             if (e.type !== "click") return;
             if (isDraggingRef.current) return;
-            if (app.placingStringId) return;
+            if (app.tool.kind !== "select") return;
             app.clearSelection();
           }}
         >
@@ -63,12 +68,12 @@ export default function SimulatorPanel({ id }: { id: string }) {
             intensity={project.settings.nightMode ? 0.1 : 1.2}
           />
           <GardenModel isDraggingRef={isDraggingRef} />
-          <MeasureTool />
+          {app.isMeasureMode ? <MeasureTool /> : null}
           {app.isMeasureMode ? null : <SimulatorControls />}
-          {simulator.placingString && (
-            <StringPlacer string={simulator.placingString} />
-          )}
+          {app.placingTool ? <StringPlacer tool={app.placingTool} /> : null}
           <StringsRenderer />
+          <MappingScene />
+          <DevCanvasHooks />
 
           {project.settings.nightMode ? (
             <NightModeMultiCameraPass
@@ -80,8 +85,11 @@ export default function SimulatorPanel({ id }: { id: string }) {
             />
           )}
         </Canvas>
+        <PhotoOverlay />
         <SideToolbar />
         <MeasureStatus />
+        <PlacementStatus />
+        <RangePickStatus />
       </div>
     </SimulatorContext>
   );

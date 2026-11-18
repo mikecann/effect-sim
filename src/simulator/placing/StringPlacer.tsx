@@ -1,8 +1,10 @@
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useEffect, useRef, useState } from "react";
-import { useSimulator } from "../SimulatorContext";
-import { LedString } from "../rendering/LedString";
+import { useEffect, useMemo, useRef } from "react";
+import { useApp } from "../../common/AppContext";
+import type { PlacingTool } from "../../common/models/editorTool";
+import { isKeyboardEventFromEditable } from "../../common/utils/keyboard";
+import { resamplePath } from "../../../shared/geometry/stringLayout";
 import AnchorPoints from "./AnchorPoints";
 import { HoverLine } from "./HoverLine";
 import { HoverPoint } from "./HoverPointRef";
@@ -10,197 +12,144 @@ import {
   calculateRemainingDistance,
   computeClampedHoverPoint,
 } from "./helpers";
-import { useEscapeKey } from "../../common/utils/useEscapeKey";
-import type { StringNodeModel } from "../../../shared/models/StringNodeModel";
-import { StringUIModel } from "../models/StringUIModel";
+import {
+  collectSurfaceMeshes,
+  pointerToNdc,
+  rayFromCamera,
+  raycastSurface,
+} from "./raycast";
 
-export default function StringPlacer({ string }: { string: StringUIModel }) {
+/** A click that moved further than this is a camera drag, not a click. */
+const CLICK_SLOP_PX = 5;
+
+/**
+ * Drawing a string's path on the house. Click to add a point; Enter
+ * finishes, Backspace takes the last point back, Esc asks before throwing
+ * the path away. It finishes by itself once the path uses the whole string.
+ */
+export default function StringPlacer({ tool }: { tool: PlacingTool }) {
   const { gl, camera } = useThree();
-  const appModel = useSimulator().app;
-
-  const [pathPoints, setPathPoints] = useState<Array<THREE.Vector3>>([]);
-
-  // Use refs for hover point tracking to avoid re-renders
+  const app = useApp();
+  const string = app.project?.findString(tool.stringKey) ?? null;
   const hoverPointRef = useRef<THREE.Vector3 | null>(null);
+  const meshes = useMemo(
+    () => collectSurfaceMeshes(app.gardenModel),
+    [app.gardenModel],
+  );
 
-  // Store pathPoints in a ref to avoid recreating handlers
-  const pathPointsRef = useRef(pathPoints);
+  // Pointer: hover follows the surface, a click (not a drag) adds a point.
   useEffect(() => {
-    pathPointsRef.current = pathPoints;
-  }, [pathPoints]);
-
-  // Cache garden objects to avoid traversing scene on every raycast
-  const gardenObjectsRef = useRef<Array<THREE.Object3D> | null>(null);
-  useEffect(() => {
-    if (!appModel.gardenModel) {
-      gardenObjectsRef.current = null;
-      return;
-    }
-
-    // Collect all mesh objects from the garden model once
-    const gardenObjects: Array<THREE.Object3D> = [];
-    appModel.gardenModel.traverse((obj) => {
-      if (obj.userData && (obj.userData.__measure || obj.userData.__string))
-        return;
-      if ("isMesh" in obj && (obj as { isMesh: boolean }).isMesh)
-        gardenObjects.push(obj);
-    });
-    gardenObjectsRef.current = gardenObjects;
-  }, [appModel.gardenModel]);
-
-  // Set up pointer move handler to update hover point through refs
-  useEffect(() => {
+    if (!string) return;
     const dom = gl.domElement;
-    const mouseDownPosition = new THREE.Vector2();
-    const raycaster = new THREE.Raycaster();
-    const pointerNdc = new THREE.Vector2();
+    const down = { x: 0, y: 0 };
+    let frame: number | null = null;
+    let pending: PointerEvent | null = null;
 
-    // Throttle pointer move using requestAnimationFrame
-    let rafId: number | null = null;
-    let pendingEvent: PointerEvent | null = null;
-
-    const processPointerMove = () => {
-      if (!pendingEvent || !appModel.gardenModel || !gardenObjectsRef.current) {
-        rafId = null;
-        return;
-      }
-
-      const e = pendingEvent;
-      pendingEvent = null;
-
-      // Raycast from camera through pointer position
-      const rect = dom.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      pointerNdc.set(x, y);
-      raycaster.setFromCamera(pointerNdc, camera);
-
-      // Raycast against cached garden objects
-      const intersections = raycaster.intersectObjects(
-        gardenObjectsRef.current,
-        true,
+    const hover = () => {
+      frame = null;
+      if (!pending) return;
+      const surface = raycastSurface(
+        rayFromCamera(camera, pointerToNdc(pending, dom)),
+        meshes,
       );
-      const intersection = intersections.length > 0 ? intersections[0] : null;
-      if (!intersection) {
-        hoverPointRef.current = null;
-        rafId = null;
-        return;
-      }
-
-      // Offset the intersection point along the surface normal
-      const offsetDistance = 0.05; // 5cm above the surface
-      const offsetPoint = intersection.point.clone();
-
-      if (intersection.face && intersection.object) {
-        // Get the normal in world space
-        const normal = new THREE.Vector3();
-        normal.copy(intersection.face.normal);
-        if (intersection.object instanceof THREE.Mesh) {
-          // Transform normal to world space
-          const worldMatrix = new THREE.Matrix3();
-          worldMatrix.getNormalMatrix(intersection.object.matrixWorld);
-          normal.applyMatrix3(worldMatrix).normalize();
-        }
-        // Offset along the normal
-        offsetPoint.add(normal.multiplyScalar(offsetDistance));
-      }
-
-      const currentPathPoints = pathPointsRef.current;
-      hoverPointRef.current = computeClampedHoverPoint(
-        currentPathPoints[currentPathPoints.length - 1] || null,
-        offsetPoint,
-        currentPathPoints,
-        string.string.ledCount,
-        string.string.spacingMeters,
-      );
-
-      rafId = null;
+      pending = null;
+      const points = app.placingTool?.points ?? [];
+      hoverPointRef.current = surface
+        ? toVector(
+            computeClampedHoverPoint(
+              points,
+              surface,
+              string.ledCount,
+              string.spacingMeters,
+            ),
+          )
+        : null;
     };
 
-    const handlePointerMove = (e: PointerEvent) => {
-      pendingEvent = e;
-      if (rafId === null) rafId = requestAnimationFrame(processPointerMove);
+    const onMove = (e: PointerEvent) => {
+      pending = e;
+      if (frame === null) frame = requestAnimationFrame(hover);
     };
-
-    // Store mouse down position
-    const handlePointerDown = (e: PointerEvent) =>
-      mouseDownPosition.set(e.clientX, e.clientY);
-
-    const handlePointerUp = (e: PointerEvent) => {
+    const onDown = (e: PointerEvent) => {
+      down.x = e.clientX;
+      down.y = e.clientY;
+    };
+    const onUp = (e: PointerEvent) => {
       const hoverPoint = hoverPointRef.current;
       if (!hoverPoint) return;
-
-      // Check if mouse moved less than 5 pixels
-      const distance = Math.sqrt(
-        Math.pow(e.clientX - mouseDownPosition.x, 2) +
-          Math.pow(e.clientY - mouseDownPosition.y, 2),
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX)
+        return;
+      const point = { x: hoverPoint.x, y: hoverPoint.y, z: hoverPoint.z };
+      app.sendTool({ kind: "ADD_POINT", point });
+      const remaining = calculateRemainingDistance(
+        app.placingTool?.points ?? [],
+        string.ledCount,
+        string.spacingMeters,
       );
-
-      if (distance > 5) return;
-
-      // This is a click. Place the anchor
-      const newPoint = hoverPoint.clone();
-      setPathPoints([...pathPointsRef.current, newPoint]);
+      if (remaining <= 0.001) app.sendTool({ kind: "FINISH_PLACING" });
     };
 
-    dom.addEventListener("pointermove", handlePointerMove);
-    dom.addEventListener("pointerdown", handlePointerDown);
-    dom.addEventListener("pointerup", handlePointerUp);
-
+    dom.addEventListener("pointermove", onMove);
+    dom.addEventListener("pointerdown", onDown);
+    dom.addEventListener("pointerup", onUp);
     return () => {
-      dom.removeEventListener("pointermove", handlePointerMove);
-      dom.removeEventListener("pointerdown", handlePointerDown);
-      dom.removeEventListener("pointerup", handlePointerUp);
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      dom.removeEventListener("pointermove", onMove);
+      dom.removeEventListener("pointerdown", onDown);
+      dom.removeEventListener("pointerup", onUp);
+      if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [gl.domElement, camera, appModel.gardenModel, string]);
+  }, [gl.domElement, camera, meshes, string, app]);
 
-  useEscapeKey(() => appModel.cancelPlacingString());
-
+  // Keys: Enter finishes, Backspace undoes, Esc asks before discarding.
   useEffect(() => {
-    if (
-      calculateRemainingDistance(
-        pathPoints,
-        string.string.ledCount,
-        string.string.spacingMeters,
-        null,
-      ) > 0.001
-    )
-      return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isKeyboardEventFromEditable(e)) return;
+      if (e.key === "Enter") app.sendTool({ kind: "FINISH_PLACING" });
+      else if (e.key === "Backspace") app.sendTool({ kind: "UNDO_POINT" });
+      else if (e.key === "Escape") app.sendTool({ kind: "CANCEL_PLACING" });
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [app]);
 
-    string.string.setPathPoints(
-      pathPoints.map((p) => ({
-        position: { x: p.x, y: p.y, z: p.z },
-      })),
-    );
-    appModel.cancelPlacingString();
-  }, [string, pathPoints, appModel]);
+  const anchors = useMemo(() => tool.points.map(toVector), [tool.points]);
+  const preview = useMemo(
+    () =>
+      string
+        ? resamplePath(tool.points, string.ledCount, string.spacingMeters)
+            .positions
+        : [],
+    [tool.points, string],
+  );
+
+  if (!string) return null;
 
   return (
     <group>
       <HoverPoint
         hoverPointRef={hoverPointRef}
-        string={string.string.doc}
-        pathPoints={pathPoints}
+        ledCount={string.ledCount}
+        spacingMeters={string.spacingMeters}
+        pathPoints={tool.points}
       />
-
-      {pathPoints.length >= 2 && (
-        <LedString
-          string={string}
-          pathPointsOverride={pathPoints.map((p) => ({
-            x: p.x,
-            y: p.y,
-            z: p.z,
-          }))}
-        />
+      {preview.map((p, i) =>
+        p ? (
+          <mesh key={i} position={[p.x, p.y, p.z]}>
+            <boxGeometry args={[0.03, 0.03, 0.03]} />
+            <meshBasicMaterial color="#333333" />
+          </mesh>
+        ) : null,
       )}
-
       <HoverLine
-        lastAnchorPoint={pathPoints[pathPoints.length - 1]}
+        lastAnchorPoint={anchors[anchors.length - 1] ?? null}
         hoverPointRef={hoverPointRef}
       />
-
-      <AnchorPoints points={pathPoints} />
+      <AnchorPoints points={anchors} />
     </group>
   );
 }
+
+const toVector = (p: { x: number; y: number; z: number }) =>
+  new THREE.Vector3(p.x, p.y, p.z);

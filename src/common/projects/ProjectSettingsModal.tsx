@@ -3,6 +3,10 @@ import { useApp } from "../AppContext";
 import { DEFAULT_FRAMERATE } from "./projectConstants";
 import { useAdaptiveStep } from "../hooks/useAdaptiveStep";
 import { useConfirmation } from "../confirmation/ConfirmationProvider";
+import { useState } from "react";
+import { api } from "../../../convex/_generated/api";
+import { useEditorMutation } from "../auth/useEditorMutation";
+import { useApiErrorHandler } from "../errors";
 
 export default function ProjectSettingsModal({
   opened,
@@ -14,6 +18,9 @@ export default function ProjectSettingsModal({
   const app = useApp();
   const project = app.getProject();
   const { confirm } = useConfirmation();
+  const deleteProject = useEditorMutation(api.editor.deleteProject);
+  const onApiError = useApiErrorHandler();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const currentStringLedSize = project.settings.stringLedSize ?? 0.1;
   const currentFramerate =
@@ -74,17 +81,26 @@ export default function ProjectSettingsModal({
           <Button
             color="red"
             variant="light"
-            onClick={() => {
-              confirm({
+            loading={isDeleting}
+            disabled={isDeleting}
+            onClick={async () => {
+              const confirmed = await confirm({
                 title: "Delete project?",
                 content: `Are you sure you want to delete "${project.name}"? This will permanently delete all nodes, sequences, and playlists in this project. This cannot be undone.`,
                 confirmButton: "Delete",
                 confirmButtonColor: "red",
-              }).then((confirmed) => {
-                if (!confirmed) return;
+              });
+              if (!confirmed) return;
+              setIsDeleting(true);
+              try {
+                await deleteProject({ projectId: project._id });
                 app.removeProject(project);
                 onClose();
-              });
+              } catch (error) {
+                onApiError(error);
+              } finally {
+                setIsDeleting(false);
+              }
             }}
           >
             Delete Project

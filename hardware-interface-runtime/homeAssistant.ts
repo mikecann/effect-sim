@@ -1,5 +1,5 @@
-import { logger } from "./utils/logger";
 import { reachOut } from "../shared/outsideWorld";
+import type { PlugReading } from "./display/plug";
 
 // The display's mains power is a smart plug in Home Assistant ("Xmas Lights
 // Plug - Main"). With these set in .env.local, the remote's on/off switches
@@ -34,19 +34,23 @@ const send = async (method: string, path: string, body?: unknown) => {
   return res.json();
 };
 
-/** Whether the plug is on, or null if Home Assistant doesn't know right now. */
-export const readPlug = async (): Promise<boolean | null> => {
+/**
+ * Whether the plug is on (null if Home Assistant doesn't know right now:
+ * "unavailable", "unknown", or no answer), and when its state last changed.
+ */
+export const readPlug = async (): Promise<PlugReading> => {
   const state = (await call("GET", `/api/states/${entityId}`)) as {
     state: string;
+    last_changed?: string;
   } | null;
-  if (!state) return null;
-  if (state.state === "on") return true;
-  if (state.state === "off") return false;
-  return null; // "unavailable" or "unknown"
+  if (!state) return { on: null, changedAt: null };
+  const on = state.state === "on" ? true : state.state === "off" ? false : null;
+  const changedAt = state.last_changed ? Date.parse(state.last_changed) : NaN;
+  return { on, changedAt: Number.isFinite(changedAt) ? changedAt : null };
 };
 
+/** Throws if Home Assistant refuses or doesn't answer (display/plug.ts retries). */
 export const switchPlug = async (on: boolean) => {
-  logger.info(`Switching the lights' plug ${on ? "on" : "off"}`);
   await call("POST", `/api/services/switch/turn_${on ? "on" : "off"}`, {
     entity_id: entityId,
   });

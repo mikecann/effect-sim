@@ -1,5 +1,5 @@
 import { TextInput } from "@mantine/core";
-import type { StringProp } from "../../../common/props/inspectableProps";
+import type { StringProp } from "../../../../shared/effects/inspectableProps";
 
 type StringPropEditorProps = {
   label: string;

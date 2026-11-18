@@ -1,11 +1,11 @@
+import type { SequenceKey } from "../../../shared/models/docs";
 import { makeAutoObservable, runInAction } from "mobx";
 import type { AppModel } from "../../common/models/AppModel";
 import { SequenceUIModel } from "./SequenceUIModel";
-import { Id } from "../../../convex/_generated/dataModel";
 import { makePersistable } from "mobx-persist-store";
 
 export class SequencerPanelUIModel {
-  selectedSequenceId: Id<"sequences"> | null = null;
+  selectedSequenceId: SequenceKey | null = null;
 
   constructor(
     public readonly app: AppModel,
@@ -22,20 +22,20 @@ export class SequencerPanelUIModel {
 
   get sequence() {
     if (!this.selectedSequenceId) return null;
-    const sequence = this.app.project?.findSequenceById(
+    const sequence = this.app.project?.findSequence(
       this.selectedSequenceId,
     );
     if (!sequence) return null;
     return new SequenceUIModel(this, sequence);
   }
 
-  setSelectedSequenceId(id: Id<"sequences"> | null) {
+  setSelectedSequenceId(id: SequenceKey | null) {
     this.selectedSequenceId = id;
   }
 
   selectFirstSequence() {
     if (!this.app.project) return;
     if (this.app.project.sequences.length === 0) return;
-    this.selectedSequenceId = this.app.project.sequences[0]._id;
+    this.selectedSequenceId = this.app.project.sequences[0].key;
   }
 }

@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { observer } from "mobx-react-lite";
 import { useApp } from "../common/AppContext";
 import { useLedData } from "./LedDataStoreContext";
 

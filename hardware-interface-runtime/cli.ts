@@ -1,3 +1,4 @@
+import type { PlaylistKey } from "../shared/models/docs";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
@@ -13,6 +14,10 @@ export const runSetupCLI = async (convexUrl: string) => {
     .option("-l, --playlist <id>", "Playlist ID (or 'null' for listen mode)")
     .option("--dry-run", "Run without sending UDP, mutations or Home Assistant")
     .option("--smoke", "Boot, run ~2 s of frames without side effects, exit")
+    .option(
+      "--local-convex-writes",
+      "With --dry-run and a local backend: let Convex mutations through",
+    )
     .parse(process.argv);
 
   const options = program.opts();
@@ -41,7 +46,7 @@ export const runSetupCLI = async (convexUrl: string) => {
 
   const playlistId = await iife(async () => {
     if (options.playlist === "null") return null;
-    if (options.playlist) return options.playlist as Id<"playlists">;
+    if (options.playlist) return options.playlist as PlaylistKey;
     if (options.smoke) return null;
     const playlists = await client.query(
       api.functions.listPlaylistsForProject,
@@ -60,10 +65,10 @@ export const runSetupCLI = async (convexUrl: string) => {
       message: "Select a playlist to play (or None to listen)",
       choices: [
         { title: "None (Listen Mode)", value: null },
-        ...playlists.map((p) => ({ title: p.name, value: p._id })),
+        ...playlists.map((p) => ({ title: p.name, value: p.key })),
       ],
     });
-    return response.playlistId as Id<"playlists">;
+    return response.playlistId as PlaylistKey;
   });
 
   return { projectId, playlistId };

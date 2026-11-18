@@ -1,12 +1,14 @@
 import { makeAutoObservable } from "mobx";
 import type { Segment, Icon } from "./types";
 import { ProjectModel } from "./ProjectModel";
-import { NodeDocOfKind } from "../../convex/schema";
+import type { NodeDocOfKind } from "./docs";
 import { VirtualStringNodeSegmentModel } from "./VirtualStringNodeSegmentModel";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
+import { virtualStringPositions, type Point3 } from "../geometry/stringLayout";
 
-export interface VirtualStringNodeModel
-  extends WithAutoSetters<NodeDocOfKind<"virtual_string">> {}
+export interface VirtualStringNodeModel extends WithAutoSetters<
+  NodeDocOfKind<"virtual_string">
+> {}
 
 export class VirtualStringNodeModel {
   constructor(
@@ -30,6 +32,16 @@ export class VirtualStringNodeModel {
     return this.segments.reduce(
       (total, segment) => total + (segment.toIndex - segment.fromIndex + 1),
       0,
+    );
+  }
+
+  /** Each LED's position, through the real strings its segments are on. */
+  get filledPositions(): Array<Point3 | null> {
+    const project = this.project;
+    if (!project) return [];
+    return virtualStringPositions(
+      this.segments,
+      (key) => project.findString(key)?.filledPositions ?? null,
     );
   }
 

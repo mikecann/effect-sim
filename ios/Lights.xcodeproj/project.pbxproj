@@ -36,11 +36,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		AA0000000000000000000104 /* Lights.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Lights.xcconfig; sourceTree = "<group>"; };
 		AA0000000000000000000101 /* Lights.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lights.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000103 /* LightsWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LightsWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AA0000000000000000000606 /* Exceptions for "Lights" folder in "Lights" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA0000000000000000000701 /* Lights */;
+		};
 		AA0000000000000000000604 /* Exceptions for "LightsWidgets" folder in "LightsWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -53,6 +61,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000601 /* Lights */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA0000000000000000000606 /* Exceptions for "Lights" folder in "Lights" target */,
+			);
 			path = Lights;
 			sourceTree = "<group>";
 		};
@@ -93,6 +104,7 @@
 		AA0000000000000000000501 = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000104 /* Lights.xcconfig */,
 				AA0000000000000000000601 /* Lights */,
 				AA0000000000000000000603 /* LightsWidgets */,
 				AA0000000000000000000605 /* Shared */,
@@ -245,6 +257,7 @@
 /* Begin XCBuildConfiguration section */
 		AA0000000000000000000B01 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA0000000000000000000104 /* Lights.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -274,6 +287,7 @@
 		};
 		AA0000000000000000000B02 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA0000000000000000000104 /* Lights.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -305,6 +319,7 @@
 				DEVELOPMENT_TEAM = 4DTAZSZL6B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Lights/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Lights;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -336,6 +351,7 @@
 				DEVELOPMENT_TEAM = 4DTAZSZL6B;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Lights/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Lights;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

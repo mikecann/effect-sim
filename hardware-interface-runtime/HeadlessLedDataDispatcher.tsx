@@ -2,7 +2,7 @@ import { useLedData } from "../src/data/LedDataStoreContext";
 import { useFrame } from "../src/common/utils/frames";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { observer } from "mobx-react-lite";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const scale = (
   data: Uint8Array,
@@ -19,6 +19,7 @@ const scale = (
   return out;
 };
 
+/** Each frame, sends what the effects drew to every string, dimmed by the display's brightness. */
 export const HeadlessLedDataDispatcher = observer(
   ({ app }: { app: HWIRAppModel }) => {
     const ledDataStore = useLedData();
@@ -26,19 +27,31 @@ export const HeadlessLedDataDispatcher = observer(
     // allocate every frame.
     const [scaled] = useState(() => new Map<string, Uint8Array>());
 
+    // The display settings this tree was rendered with. When nothing plays
+    // (off, or no playlist) the dispatcher's own black frame is the render;
+    // otherwise only a frame the player has stamped (RenderStamp) counts.
+    const version = app.controlVersion;
+    const selfRendered = !(app.isOn && app.playlist);
+    const rendered = useRef({ version: -1, selfRendered: true });
+    useEffect(() => {
+      rendered.current = { version, selfRendered };
+    }, [version, selfRendered]);
+
     useFrame(() => {
       // Off is brightness 0: keep sending black frames, as WLED goes back to
       // its own effect a few seconds after DDP data stops.
       const factor = app.isOn ? app.brightness : 0;
-      for (const [targetId, stringData] of ledDataStore.stringsMap) {
-        const string = app.stringsMap.get(targetId);
-        if (!string) continue;
-        string.onData.dispatch(
+      for (const [key, stringData] of ledDataStore.stringsMap) {
+        const link = app.links.get(key);
+        if (!link) continue;
+        void link.send(
           factor >= 1
             ? stringData.data
-            : scale(stringData.data, factor, scaled, targetId),
+            : scale(stringData.data, factor, scaled, key),
         );
       }
+      const r = rendered.current;
+      app.frameShown(r.selfRendered ? r.version : app.lastRendered());
     });
 
     return null;

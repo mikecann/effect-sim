@@ -1,64 +1,45 @@
-import { useEffect, useState } from "react";
-import { HWStringModel } from "./models/HWStringModel";
-import { createAndConnectWLEDDDP, WLEDDDPConnection } from "./models/WLED_DDP";
+import { useEffect, useRef } from "react";
 import { observer } from "mobx-react-lite";
-import { logger } from "./utils/logger";
+import type { StringNodeModel } from "../shared/models/StringNodeModel";
+import { HWIRAppModel } from "./models/HWIRAppModel";
+import { StringLink } from "./strings/StringLink";
 
-export const String = observer(({ model }: { model: HWStringModel }) => {
-  const [connection, setConnection] = useState<WLEDDDPConnection | null>(null);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    let _connection: WLEDDDPConnection | null = null;
-    const host = model.string.ipAddress;
-    const port = model.string.port;
-    const name = model.string.name;
-
-    createAndConnectWLEDDDP({
-      host,
-      port,
-      signal: abortController.signal,
-    })
-      .then((conn) => {
-        _connection = conn;
-        setConnection(_connection);
-      })
-      .catch((e) => {
-        logger.error(`Error connecting to '${name}': ${e}`);
-      });
-
-    return () => {
-      abortController.abort();
-      _connection?.close().catch((e) => {
-        logger.error(`Error closing connection to '${name}': ${e}`);
-      });
-    };
-  }, [model.string.ipAddress, model.string.port]);
-
-  useEffect(() => {
-    if (!connection) return;
-    return model.onData.add((rgb) => {
-      // console.log(
-      //   `Sending '${rgb.length}' bytes data to '${model.string.name}'`,
-      // );
-      connection.send(rgb).catch((e) => {
-        logger.error(
-          `Error sending packet of ${rgb.length} bytes to '${model.string.name}': ${e}`,
-        );
-      });
+/** Keeps one WLED link per string, remade only when its address changes. */
+export const String = observer(
+  ({ app, string }: { app: HWIRAppModel; string: StringNodeModel }) => {
+    // The link reads these when it needs them, so a rename or brightness
+    // change doesn't reconnect.
+    const latest = useRef(string);
+    useEffect(() => {
+      latest.current = string;
     });
-  }, [connection, model.onData]);
 
-  useEffect(() => {
-    if (!connection) return;
-    const brightness = model.string.brightness;
-    const name = model.string.name;
-    connection.setBrightness(brightness).catch((e) => {
-      logger.error(
-        `Error setting brightness to ${brightness} for '${name}': ${e}`,
-      );
-    });
-  }, [model.string.brightness, connection]);
+    const { key, ipAddress, port, brightness } = string;
 
-  return null;
-});
+    useEffect(() => {
+      const link = new StringLink({
+        host: ipAddress,
+        port,
+        name: () => latest.current.name,
+        brightness: () => latest.current.brightness,
+      });
+      app.links.set(key, link);
+      return () => {
+        if (app.links.get(key) === link) app.links.delete(key);
+        link.close();
+      };
+    }, [app, key, ipAddress, port]);
+
+    const firstBrightness = useRef(true);
+    useEffect(() => {
+      // The link sets it itself when it first connects.
+      if (firstBrightness.current) {
+        firstBrightness.current = false;
+        return;
+      }
+      app.links.get(key)?.brightnessChanged();
+    }, [app, key, brightness]);
+
+    return null;
+  },
+);

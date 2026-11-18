@@ -2,50 +2,55 @@ import { observer } from "mobx-react-lite";
 import { ClientDataSocket } from "./ClientDataSocket";
 import { String } from "./String";
 import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
-import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
-import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
-import { FrameProvider } from "../src/common/FixedFrameProvider";
-import { useDisplayControl, useProjectModel } from "./hooks";
+import { Playback } from "./Playback";
+import { HwirFrameProvider } from "./frames/HwirFrameProvider";
+import {
+  useDisplayControl,
+  useHeartbeat,
+  useProjectModel,
+  useSwitchReporter,
+} from "./hooks";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
 import { runMode } from "./runMode";
 import { SmokeCheck } from "./SmokeCheck";
+import { MappingDisplay } from "./mapping/MappingDisplay";
 
 export const App = observer(({ app }: { app: HWIRAppModel }) => {
   useProjectModel(app);
   useDisplayControl(app);
+  useHeartbeat(app);
+  useSwitchReporter(app);
 
   if (!app.dataStore) return null;
   if (!app.project) return null;
 
-  const project = app.project;
-
-  const fps = project?.settings.defaultFramerate ?? DEFAULT_FRAMERATE;
+  const fps = app.project.settings.defaultFramerate ?? DEFAULT_FRAMERATE;
+  const mappingSessionId = app.mappingSessionId;
 
   return (
     <LedDataStoreContext.Provider value={app.dataStore}>
-      <FrameProvider fps={fps}>
+      <HwirFrameProvider fps={fps} meter={app.fpsMeter}>
         {runMode === "smoke" ? <SmokeCheck app={app} /> : null}
         {app.strings.map((string) => (
-          <String key={string.string._id} model={string} />
+          <String key={string.key} app={app} string={string} />
         ))}
 
         {app.isPlaylistMode ? (
-          <>
-            {/* Off: nothing plays, and the dispatcher sends black. The key
-                starts the player over when the remote changes mode. */}
-            {app.isOn && app.playlist ? (
-              <HeadlessPlaylistPlayer
-                key={app.modeKey}
-                playlist={app.playlist}
-              />
-            ) : null}
-            <HeadlessLedDataDispatcher app={app} />
-          </>
+          mappingSessionId ? (
+            // Camera mapping: the session's patterns instead of the playlist.
+            <MappingDisplay
+              key={mappingSessionId}
+              app={app}
+              sessionId={mappingSessionId}
+            />
+          ) : (
+            <Playback app={app} />
+          )
         ) : runMode === "smoke" ? null : (
           <ClientDataSocket app={app} />
         )}
-      </FrameProvider>
+      </HwirFrameProvider>
     </LedDataStoreContext.Provider>
   );
 });

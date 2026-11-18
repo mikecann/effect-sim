@@ -2,18 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { blockOutsideWorld, reachOut } from "./outsideWorld";
 import { SwitchNodeModel } from "./models/SwitchNodeModel";
 import type { ProjectModel } from "./models/ProjectModel";
-import type { NodeDocOfKind } from "../convex/schema";
+import type { NodeDocOfKind } from "./models/docs";
 
 const plug = () =>
   new SwitchNodeModel(
     {
-      _id: "n1",
-      _creationTime: 0,
+      key: "n1",
       projectId: "p1",
       kind: "switch",
       name: "Plug",
       ipAddress: "192.168.2.50",
-      isOn: null,
     } as unknown as NodeDocOfKind<"switch">,
     {} as ProjectModel,
   );

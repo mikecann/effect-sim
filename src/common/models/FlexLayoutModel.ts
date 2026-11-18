@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable } from "mobx";
+import { makeAutoObservable, observableRef } from "mobx";
 import type {
   IJsonModel,
   IJsonRowNode,
@@ -9,11 +9,13 @@ import { Model, Actions, DockLocation } from "flexlayout-react";
 import { defaultLayoutJson, TabComponentKinds } from "../tabs";
 import { AppModel } from "./AppModel";
 import { makePersistable } from "mobx-persist-store";
+import { ensureNotUndefined } from "../../../shared/ensure";
 
 export const INSPECTOR_TAB_ID = "tab-inspector";
 export const STRINGS_TAB_ID = "tab-strings";
 export const SEQUENCER_TAB_ID = "tab-sequencer";
 export const PLAYLISTS_TAB_ID = "tab-playlists";
+export const MAPPING_TAB_ID = "tab-mapping";
 
 export class FlexLayoutModel {
   model: Model;
@@ -22,7 +24,7 @@ export class FlexLayoutModel {
   constructor(app: AppModel) {
     this.model = Model.fromJson(defaultLayoutJson);
     makeAutoObservable(this, {
-      model: observable.ref,
+      model: observableRef,
     });
     makePersistable(this, {
       name: "FlexLayoutModel",
@@ -72,7 +74,6 @@ export class FlexLayoutModel {
   setModel(nextModel: Model) {
     this.model = nextModel;
     const json = this.model.toJson();
-    console.log("FlexLayoutModel changed", json);
     this.modelJson = json;
   }
 
@@ -82,9 +83,10 @@ export class FlexLayoutModel {
   }
 
   showInspector() {
-    const inspectorTab = this.model.getNodeById(INSPECTOR_TAB_ID);
-    if (inspectorTab)
-      return this.model.doAction(Actions.selectTab(INSPECTOR_TAB_ID));
+    // The default layout's inspector tab is "inspector"; one added later is INSPECTOR_TAB_ID.
+    for (const id of ["inspector", INSPECTOR_TAB_ID])
+      if (this.model.getNodeById(id))
+        return this.model.doAction(Actions.selectTab(id));
 
     const editorTabset = this.model.getNodeById(STRINGS_TAB_ID)?.getParent();
     if (!editorTabset) return;
@@ -119,9 +121,37 @@ export class FlexLayoutModel {
           component: "sequencer",
           enableClose: true,
         },
-        this.model.getRoot().getId(),
+        ensureNotUndefined(
+          this.model.getRootRow(),
+          "flexlayout model has no root row",
+        ).getId(),
         DockLocation.BOTTOM,
         1,
+      ),
+    );
+  }
+
+  /** Opens the camera mapping panel beside the inspector. */
+  showMapping() {
+    if (this.model.getNodeById(MAPPING_TAB_ID))
+      return this.model.doAction(Actions.selectTab(MAPPING_TAB_ID));
+    const inspector =
+      this.model.getNodeById("inspector") ??
+      this.model.getNodeById(INSPECTOR_TAB_ID);
+    const tabset = inspector?.getParent();
+    if (!tabset) return;
+    this.model.doAction(
+      Actions.addNode(
+        {
+          type: "tab",
+          name: "Mapping",
+          id: MAPPING_TAB_ID,
+          component: "mapping",
+          enableClose: true,
+        },
+        tabset.getId(),
+        DockLocation.CENTER,
+        -1,
       ),
     );
   }

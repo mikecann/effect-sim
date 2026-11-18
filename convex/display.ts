@@ -1,12 +1,12 @@
 import { v } from "convex/values";
 import { query, type DatabaseReader } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { displayControl, machines } from "./machines";
-import { displayModeValidator, displaySettingsValidator } from "./schema";
+import { displayControl } from "./machines";
+import { displaySettingsValidator, playbackModeValidator } from "./schema";
+import { hwirMutation, remoteMutation } from "./auth";
 
-// The phone remote (ios/) and HWIR talk to the display through these.
-// Like the rest of this deployment's functions there's no auth: anyone with
-// the deployment URL can call them.
+// The phone remote (ios/) and HWIR talk to the display through these. The
+// queries are public; each mutation takes its client's token (convex/roles.ts).
 
 const findControl = async (
   ctx: { db: DatabaseReader },
@@ -36,27 +36,27 @@ export const get = query({
   },
 });
 
-/** The modes the phone can pick: playlists, then single sequences. */
+/** The modes the phone can pick: playlists, then single sequences. `id` is the row's key. */
 export const modes = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
     const playlists = await ctx.db
       .query("playlists")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
-      .collect();
+      .take(1000);
     const sequences = await ctx.db
       .query("sequences")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
-      .collect();
+      .take(1000);
     return [
       ...playlists.map((p) => ({
         kind: "playlist" as const,
-        id: p._id,
+        id: p.key,
         name: p.name,
       })),
       ...sequences.map((s) => ({
         kind: "sequence" as const,
-        id: s._id,
+        id: s.key,
         name: s.name,
       })),
     ];
@@ -64,12 +64,12 @@ export const modes = query({
 });
 
 /** The phone changes any of on/off, brightness and mode. */
-export const request = machines.mutation({
+export const request = remoteMutation({
   args: {
     projectId: v.id("projects"),
     isOn: v.optional(v.boolean()),
     brightness: v.optional(v.number()),
-    mode: v.optional(displayModeValidator),
+    mode: v.optional(playbackModeValidator),
   },
   handler: async (ctx, { projectId, ...patch }) => {
     const row = await findControl(ctx, projectId);
@@ -82,7 +82,7 @@ export const request = machines.mutation({
 });
 
 /** HWIR starts: makes the row from its startup flags if there isn't one. */
-export const boot = machines.mutation({
+export const boot = hwirMutation({
   args: { projectId: v.id("projects"), settings: displaySettingsValidator },
   handler: async (ctx, { projectId, settings }) => {
     const row = await findControl(ctx, projectId);
@@ -100,7 +100,7 @@ export const boot = machines.mutation({
 });
 
 /** HWIR is now playing the settings that were requested at `requestedAt`. */
-export const applied = machines.mutation({
+export const applied = hwirMutation({
   args: { projectId: v.id("projects"), requestedAt: v.number() },
   handler: async (ctx, { projectId, requestedAt }) => {
     const row = await findControl(ctx, projectId);
@@ -113,7 +113,7 @@ export const applied = machines.mutation({
 });
 
 /** The lights' power plug was switched outside the app; on/off follows it. */
-export const plugSwitched = machines.mutation({
+export const plugSwitched = hwirMutation({
   args: { projectId: v.id("projects"), isOn: v.boolean() },
   handler: async (ctx, { projectId, isOn }) => {
     const row = await findControl(ctx, projectId);

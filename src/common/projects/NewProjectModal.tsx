@@ -1,11 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, Modal, Stack, TextInput } from "@mantine/core";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { ProjectModel } from "../../../shared/models/ProjectModel";
-import { createTempId, isTempId } from "../../../shared/models/types";
-import { useApp } from "../AppContext";
-import { when } from "mobx";
+import { api } from "../../../convex/_generated/api";
 import { useApiErrorHandler } from "../errors";
+import { useEditorMutation } from "../auth/useEditorMutation";
 
 export default function NewProjectModal({
   opened,
@@ -16,34 +14,16 @@ export default function NewProjectModal({
   onClose: () => void;
   onCreated: (id: Id<"projects">) => void;
 }) {
-  const app = useApp();
-
+  const [name, setName] = useState("My Project");
   const [isSaving, setIsSaving] = useState(false);
   const onApiError = useApiErrorHandler();
-
-  const project = useMemo(
-    () =>
-      new ProjectModel({
-        name: "My Project",
-        _id: createTempId("projects"),
-        _creationTime: 0,
-        settings: {
-          nightMode: false,
-          lightsOnTop: false,
-          stringLedSize: 0.1,
-        },
-      }),
-    [],
-  );
+  const createProject = useEditorMutation(api.editor.createProject);
 
   const save = async () => {
-    if (isSaving) return;
+    if (isSaving || !name.trim()) return;
     setIsSaving(true);
-    app.addProject(project);
     try {
-      // Have to do this kind of shennanings because lack of client-side id in Convex
-      await when(() => !isTempId(project._id));
-      onCreated(project._id);
+      onCreated(await createProject({ name: name.trim() }));
       onClose();
     } catch (error) {
       onApiError(error);
@@ -53,27 +33,26 @@ export default function NewProjectModal({
   };
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title="Create New Project"
-      size="sm"
-    >
+    <Modal opened={opened} onClose={onClose} title="Create New Project" size="sm">
       <Stack gap="sm">
         <TextInput
           label="Project Name"
-          value={project.name}
+          value={name}
           autoFocus
           disabled={isSaving}
-          onChange={(e) => project.setName(e.currentTarget.value)}
+          onChange={(e) => setName(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && project.name.trim()) {
+            if (e.key === "Enter") {
               e.preventDefault();
-              save();
+              void save();
             }
           }}
         />
-        <Button disabled={!project.name.trim() || isSaving} onClick={save}>
+        <Button
+          loading={isSaving}
+          disabled={!name.trim() || isSaving}
+          onClick={save}
+        >
           Create Project
         </Button>
       </Stack>

@@ -1,161 +1,152 @@
-import { LedStringSegment } from "./LedStringSegment";
+import * as THREE from "three";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
+import { useLedData } from "../../data/LedDataStoreContext";
 import type { StringUIModel } from "../models/StringUIModel";
-import type { Point3D } from "../models/StringUISegmentModel";
+import type {
+  PathSegmentLayout,
+  Point3,
+} from "../../../shared/geometry/stringLayout";
+import { LineLed } from "./LineLed";
 
-export function LedString({
-  string,
-  pathPointsOverride,
+type PlacedLed = { index: number; position: THREE.Vector3 };
+
+const toVector = (p: Point3) => new THREE.Vector3(p.x, p.y, p.z);
+
+/** The LED nearest a point, for picking one by clicking near it. */
+const nearestLed = (leds: PlacedLed[], point: THREE.Vector3) => {
+  let best = leds[0];
+  for (const led of leds)
+    if (
+      led.position.distanceToSquared(point) <
+      best.position.distanceToSquared(point)
+    )
+      best = led;
+  return best?.index ?? 0;
+};
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+/** An invisible box along a path segment, so the string can be clicked. */
+function SegmentHitArea({
+  segment,
+  onClick,
 }: {
-  string: StringUIModel;
-  pathPointsOverride?: Point3D[];
+  segment: PathSegmentLayout;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
 }) {
-  // When pathPointsOverride is provided (during placement), we need to compute segments dynamically
-  // Otherwise use the cached segments from the model
-  if (pathPointsOverride)
-    return (
-      <LedStringWithOverride string={string} pathPoints={pathPointsOverride} />
-    );
-
-  const segments = string.segments;
-  if (segments.length === 0) return null;
-
+  const { midpoint, rotation } = useMemo(() => {
+    const start = toVector(segment.start);
+    const end = toVector(segment.end);
+    const direction = end.clone().sub(start).normalize();
+    return {
+      midpoint: start.clone().add(end).multiplyScalar(0.5),
+      rotation: new THREE.Quaternion().setFromUnitVectors(UP, direction),
+    };
+  }, [segment]);
+  if (segment.length < 0.001) return null;
   return (
-    <group>
-      {segments.map((segment) => (
-        <LedStringSegment key={segment.segmentIndex} segment={segment} />
-      ))}
-    </group>
+    <mesh position={midpoint} quaternion={rotation} onClick={onClick}>
+      <boxGeometry args={[0.2, segment.length, 0.2]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
   );
 }
 
-// Separate component for placement mode with path override
-function LedStringWithOverride({
-  string,
-  pathPoints,
-}: {
-  string: StringUIModel;
-  pathPoints: Point3D[];
-}) {
-  if (pathPoints.length < 2) return null;
-
-  // Compute segment data for override path (similar logic to StringUIModel)
-  const spacingMeters = string.string.spacingMeters;
+/** One string's LEDs, wherever its layout puts them, lit from the LED data. */
+export function LedString({ string }: { string: StringUIModel }) {
+  const ledData = useLedData();
+  const materials = useRef(new Map<number, THREE.ShaderMaterial>());
+  const lastUpdate = useRef(0);
+  const app = string.simulator.app;
+  const { key, layout, isSelected, highlights, lightsOnTop, ledSize } = string;
+  const brightness = string.string.brightness;
   const ledCount = string.string.ledCount;
+  const tool = app.tool;
+  const pickedFirst =
+    tool.kind === "pickingRange" && tool.first?.stringKey === key
+      ? tool.first.index
+      : null;
 
-  // Calculate segment lengths
-  const segmentLengths: number[] = [];
-  for (let i = 0; i < pathPoints.length - 1; i++) {
-    const a = pathPoints[i];
-    const b = pathPoints[i + 1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const dz = b.z - a.z;
-    segmentLengths.push(Math.sqrt(dx * dx + dy * dy + dz * dz));
-  }
-
-  const totalLength = segmentLengths.reduce((a, b) => a + b, 0);
-  const ledsPerMeter = 1 / spacingMeters;
-  const totalLedsBySpacing = Math.max(
-    1,
-    Math.round(totalLength * ledsPerMeter),
+  const leds = useMemo(
+    () =>
+      layout.positions.flatMap((p, index) =>
+        p ? [{ index, position: toVector(p) }] : [],
+      ),
+    [layout],
   );
-  const totalLeds = Math.min(ledCount, totalLedsBySpacing);
 
-  // Allocate LEDs across segments proportionally
-  const allocations: { startIndex: number; count: number }[] = [];
-  let assigned = 0;
-  for (let i = 0; i < segmentLengths.length; i++) {
-    const proportion = totalLength > 0 ? segmentLengths[i] / totalLength : 0;
-    const count =
-      i === segmentLengths.length - 1
-        ? totalLeds - assigned
-        : Math.round(totalLeds * proportion);
-    allocations.push({ startIndex: assigned, count: Math.max(1, count) });
-    assigned += allocations[i].count;
-  }
+  useFrame(({ clock }) => {
+    const now = clock.elapsedTime * 1000;
+    if (now - lastUpdate.current < 50) return;
+    lastUpdate.current = now;
 
-  // Normalize in case rounding overshot
-  while (assigned > totalLeds)
-    for (let i = 0; i < allocations.length && assigned > totalLeds; i++)
-      if (allocations[i].count > 1) {
-        allocations[i].count -= 1;
-        assigned -= 1;
-      }
+    const model = ledData.stringsMap.get(key);
+    if (!model) return;
+    const scale = Math.max(0, Math.min(1, brightness / 255));
+    for (const { index } of leds) {
+      const material = materials.current.get(index);
+      if (!material || index >= ledCount) continue;
+      const base = index * 3;
+      const r = ((model.data[base] ?? 0) / 255) * scale;
+      const g = ((model.data[base + 1] ?? 0) / 255) * scale;
+      const b = ((model.data[base + 2] ?? 0) / 255) * scale;
+      const color = material.uniforms.ledColor.value as THREE.Color;
+      if (color.r !== r || color.g !== g || color.b !== b)
+        color.setRGB(r, g, b);
+    }
+  });
 
-  // Recalculate start indices
-  let runningStart = 0;
-  for (const alloc of allocations) {
-    alloc.startIndex = runningStart;
-    runningStart += alloc.count;
-  }
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    if (app.tool.kind === "pickingRange") {
+      e.stopPropagation();
+      app.sendTool({
+        kind: "PICK_LED",
+        stringKey: key,
+        index: nearestLed(leds, e.point),
+      });
+      return;
+    }
+    if (app.tool.kind !== "select") return;
+    e.stopPropagation();
+    const node = app.project?.findNode(key);
+    if (node) app.setSelectedEntity({ kind: "node", node });
+  };
 
   return (
-    <group>
-      {pathPoints.slice(0, -1).map((start, index) => {
-        const end = pathPoints[index + 1];
-        const alloc = allocations[index];
+    <group renderOrder={10}>
+      {layout.isMapped
+        ? leds.map(({ index, position }) => (
+            <mesh key={`hit-${index}`} position={position} onClick={onClick}>
+              <boxGeometry args={[0.15, 0.15, 0.15]} />
+              <meshBasicMaterial visible={false} />
+            </mesh>
+          ))
+        : layout.segments.map((segment) => (
+            <SegmentHitArea
+              key={segment.index}
+              segment={segment}
+              onClick={onClick}
+            />
+          ))}
+
+      {leds.map(({ index, position }) => {
+        const isYellow = highlights.yellow.has(index);
+        const isPicked = pickedFirst === index;
         return (
-          <LedStringSegmentOverride
+          <LineLed
             key={index}
-            string={string}
-            start={start}
-            end={end}
-            startLedIndex={alloc.startIndex}
-            ledCount={alloc.count}
+            position={position}
+            materialRef={(material) => materials.current.set(index, material)}
+            lightsOnTop={lightsOnTop}
+            isSelected={
+              isSelected || isYellow || isPicked || highlights.white.has(index)
+            }
+            borderColor={isPicked ? "green" : isYellow ? "yellow" : "white"}
+            stringLedSize={ledSize}
           />
         );
       })}
-    </group>
-  );
-}
-
-// Minimal segment renderer for placement mode (no click handling, no selection)
-function LedStringSegmentOverride({
-  string,
-  start,
-  end,
-  startLedIndex,
-  ledCount,
-}: {
-  string: StringUIModel;
-  start: Point3D;
-  end: Point3D;
-  startLedIndex: number;
-  ledCount: number;
-}) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const dz = end.z - start.z;
-  const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-  if (length < 0.001) return null;
-
-  const spacingMeters = string.string.spacingMeters;
-  const positions: Array<{ x: number; y: number; z: number }> = [];
-  const nx = dx / length;
-  const ny = dy / length;
-  const nz = dz / length;
-
-  for (let distance = 0; distance <= length; distance += spacingMeters)
-    positions.push({
-      x: start.x + nx * distance,
-      y: start.y + ny * distance,
-      z: start.z + nz * distance,
-    });
-
-  if (positions.length === 0) positions.push(start);
-
-  // Limit to allocated count
-  const ledsToRender = positions.slice(0, ledCount);
-
-  return (
-    <group>
-      {ledsToRender.map((pos, i) => (
-        <mesh key={i} position={[pos.x, pos.y, pos.z]}>
-          <boxGeometry args={[0.03, 0.03, 0.03]} />
-          <meshBasicMaterial color="#333333" />
-        </mesh>
-      ))}
     </group>
   );
 }

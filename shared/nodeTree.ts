@@ -1,9 +1,9 @@
-import type { Id, Doc } from "../convex/_generated/dataModel";
+import type { NodeDoc, NodeKey } from "./models/docs";
 
-export type NodeDoc = Doc<"nodes">;
+export type { NodeDoc };
 
 export interface Node {
-  _id: Id<"nodes">;
+  key: NodeKey;
 }
 
 export interface Folder extends Node {
@@ -41,15 +41,15 @@ export const createNodesTreeFromDocs = (docs: NodeDoc[]): NodesTree => {
     return sortedChildren.map((doc) => {
       if (doc.kind === "folder") {
         // Recursively get children for folders
-        const folderChildren = buildTreeNodes(doc._id);
+        const folderChildren = buildTreeNodes(doc.key);
         return {
-          _id: doc._id,
+          key: doc.key,
           children: folderChildren,
         };
       }
-      // Regular nodes just have _id
+      // Regular nodes just have their key
       return {
-        _id: doc._id,
+        key: doc.key,
       };
     });
   };
@@ -63,11 +63,11 @@ export const findNodePath = ({
   nodeId,
 }: {
   tree: NodesTree;
-  nodeId: Id<"nodes">;
+  nodeId: NodeKey;
 }): NodesTreePath | null => {
   for (let i = 0; i < tree.length; i++) {
     const node = tree[i];
-    if (node._id === nodeId) return [i];
+    if (node.key === nodeId) return [i];
     if (isFolder(node)) {
       const childPath = findNodePath({ tree: node.children, nodeId });
       if (childPath !== null) return [i, ...childPath];
@@ -160,7 +160,7 @@ export const moveNode = ({
   path,
 }: {
   tree: NodesTree;
-  nodeId: Id<"nodes">;
+  nodeId: NodeKey;
   path: NodesTreePath;
 }): NodesTree => {
   const sourcePath = findNodePath({ tree, nodeId });
@@ -204,24 +204,24 @@ const adjustPathAfterRemoval = (
 };
 
 export type Patch = {
-  _id: Id<"nodes">;
-  parentId?: Id<"nodes"> | null;
+  key: NodeKey;
+  parentId?: NodeKey | null;
   order?: number;
 };
 
 const flattenTreeToMap = (
   tree: NodesTree,
-  parentId: Id<"nodes"> | null = null,
-): Map<string, { parentId: Id<"nodes"> | null; order: number }> => {
+  parentId: NodeKey | null = null,
+): Map<string, { parentId: NodeKey | null; order: number }> => {
   const map = new Map<
     string,
-    { parentId: Id<"nodes"> | null; order: number }
+    { parentId: NodeKey | null; order: number }
   >();
   for (let i = 0; i < tree.length; i++) {
     const node = tree[i];
-    map.set(node._id, { parentId, order: i });
+    map.set(node.key, { parentId, order: i });
     if (isFolder(node)) {
-      const childrenMap = flattenTreeToMap(node.children, node._id);
+      const childrenMap = flattenTreeToMap(node.children, node.key);
       for (const [id, state] of childrenMap) map.set(id, state);
     }
   }
@@ -244,7 +244,7 @@ export const listPatches = (
     const orderChanged = newState.order !== oldState.order;
 
     if (parentChanged || orderChanged) {
-      const patch: Patch = { _id: id as Id<"nodes"> };
+      const patch: Patch = { key: id };
       if (parentChanged) patch.parentId = newState.parentId;
       if (parentChanged || orderChanged) patch.order = newState.order;
       patches.push(patch);
@@ -259,29 +259,29 @@ export const applyPatches = (tree: NodesTree, patches: Patch[]): NodesTree => {
   const nodeState = new Map<
     string,
     {
-      parentId: Id<"nodes"> | null;
+      parentId: NodeKey | null;
       order: number;
       isFolder: boolean;
       originalNode: NodeOrFolder; // Keep reference to preserve other props if any (though strict types say no)
     }
   >();
 
-  const flatten = (nodes: NodesTree, parentId: Id<"nodes"> | null) => {
+  const flatten = (nodes: NodesTree, parentId: NodeKey | null) => {
     nodes.forEach((node, index) => {
-      nodeState.set(node._id, {
+      nodeState.set(node.key, {
         parentId,
         order: index,
         isFolder: isFolder(node),
         originalNode: node,
       });
-      if (isFolder(node)) flatten(node.children, node._id);
+      if (isFolder(node)) flatten(node.children, node.key);
     });
   };
   flatten(tree, null);
 
   // 2. Apply patches
   for (const patch of patches) {
-    const state = nodeState.get(patch._id);
+    const state = nodeState.get(patch.key);
     if (!state) continue; // Should not happen if patches are valid for this tree
 
     if (patch.parentId !== undefined) state.parentId = patch.parentId;

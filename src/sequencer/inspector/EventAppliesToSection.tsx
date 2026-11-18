@@ -1,5 +1,5 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { Group, MultiSelect, Stack, Text } from "@mantine/core";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
 import { useMemo, useEffect } from "react";
 import type { NodeDoc } from "../../../shared/nodeTree";
@@ -39,10 +39,10 @@ function getNodeOptions(nodes: NodeDoc[] | undefined) {
                 ? "🔗"
                 : "💡";
         return {
-          value: node._id,
+          value: node.key,
           label:
             node.name ||
-            `${node.kind === "string" ? "String" : node.kind === "virtual_string" ? "Virtual String" : "Switch"} ${node._id.slice(-4)}`,
+            `${node.kind === "string" ? "String" : node.kind === "virtual_string" ? "Virtual String" : "Switch"} ${node.key.slice(-4)}`,
           emoji,
         };
       }
@@ -56,7 +56,7 @@ export function EventAppliesToSection({ event }: EventAppliesToSectionProps) {
   const project = sequence.project;
   if (!project)
     throw new Error(
-      `Sequence '${sequence._id}' does not have a project associated`,
+      `Sequence '${sequence.key}' does not have a project associated`,
     );
 
   // Get all relevant nodes based on event kind
@@ -127,7 +127,7 @@ export function EventAppliesToSection({ event }: EventAppliesToSectionProps) {
       try {
         event.setAppliesTo({
           kind: "nodes" as const,
-          nodeIds: selectedNodeIds as Id<"nodes">[],
+          nodeIds: selectedNodeIds as NodeKey[],
         });
       } catch (error) {
         console.error("Failed to clean up invalid nodes:", error);
@@ -152,7 +152,7 @@ export function EventAppliesToSection({ event }: EventAppliesToSectionProps) {
             try {
               event.setAppliesTo({
                 kind: "nodes" as const,
-                nodeIds: nodeIds as Id<"nodes">[],
+                nodeIds: nodeIds as NodeKey[],
               });
             } catch (error) {
               console.error("Failed to update event nodes:", error);

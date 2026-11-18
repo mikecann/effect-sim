@@ -1,16 +1,16 @@
 import { makeAutoObservable } from "mobx";
-import { Doc, Id } from "../../../convex/_generated/dataModel";
 import type { TrackEvent } from "../../../convex/schema";
+import type { NodeKey, SequenceDoc } from "../docs";
 import { ProjectModel } from "../ProjectModel";
 import { TrackModel, TrackData } from "./TrackModel";
 import { createId } from "../types";
 import { exposeDocFields, WithAutoSetters } from "../modelUtils";
 
-export interface SequenceModel extends WithAutoSetters<Doc<"sequences">> {}
+export interface SequenceModel extends WithAutoSetters<SequenceDoc> {}
 
 export class SequenceModel {
   constructor(
-    public doc: Doc<"sequences">,
+    public doc: SequenceDoc,
     public readonly project: ProjectModel,
   ) {
     makeAutoObservable(this);
@@ -59,13 +59,13 @@ export class SequenceModel {
     const trimmedName = name.trim();
     if (trimmedName.length === 0)
       throw new Error(
-        `New track name for trackId '${trackId}' in sequence '${this._id}' is empty after trimming`,
+        `New track name for trackId '${trackId}' in sequence '${this.key}' is empty after trimming`,
       );
 
     const track = this.tracks.find((t) => t.id === trackId);
     if (!track)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     track.name = trimmedName;
@@ -76,7 +76,7 @@ export class SequenceModel {
     const originalTrackIndex = tracks.findIndex((t) => t.id === trackId);
     if (originalTrackIndex === -1)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     const originalTrack = tracks[originalTrackIndex];
@@ -114,7 +114,7 @@ export class SequenceModel {
     const currentIndex = tracks.findIndex((t) => t.id === trackId);
     if (currentIndex === -1)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     if (currentIndex === targetIndex) return;
@@ -127,7 +127,7 @@ export class SequenceModel {
     const track = this.tracks.find((t) => t.id === trackId);
     if (!track)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     track.events.push(event);
@@ -142,7 +142,7 @@ export class SequenceModel {
       effectDefinitionId?: string;
       kind?: "string_effect" | "switch_effect";
       appliesTo?:
-        | { kind: "nodes"; nodeIds: Array<Id<"nodes">> }
+        | { kind: "nodes"; nodeIds: Array<NodeKey> }
         | { kind: "all_nodes" };
       props?: unknown;
     },
@@ -150,7 +150,7 @@ export class SequenceModel {
     const track = this.tracks.find((t) => t.id === trackId);
     if (!track)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     const event = track.events.find((e) => e.id === eventId);
@@ -172,7 +172,7 @@ export class SequenceModel {
     const track = this.tracks.find((t) => t.id === trackId);
     if (!track)
       throw new Error(
-        `Track with id '${trackId}' could not be found in sequence '${this._id}'`,
+        `Track with id '${trackId}' could not be found in sequence '${this.key}'`,
       );
 
     const index = track.events.findIndex((e) => e.id === eventId);
@@ -192,7 +192,7 @@ export class SequenceModel {
     const sourceTrack = tracks.find((t) => t.id === sourceTrackId);
     if (!sourceTrack)
       throw new Error(
-        `Source track with id '${sourceTrackId}' could not be found in sequence '${this._id}'`,
+        `Source track with id '${sourceTrackId}' could not be found in sequence '${this.key}'`,
       );
 
     const eventIndex = sourceTrack.events.findIndex((e) => e.id === eventId);
@@ -206,7 +206,7 @@ export class SequenceModel {
     const targetTrack = tracks.find((t) => t.id === targetTrackId);
     if (!targetTrack)
       throw new Error(
-        `Target track with id '${targetTrackId}' could not be found in sequence '${this._id}'`,
+        `Target track with id '${targetTrackId}' could not be found in sequence '${this.key}'`,
       );
 
     // Remove from source

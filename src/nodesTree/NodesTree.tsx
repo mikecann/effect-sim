@@ -1,3 +1,4 @@
+import type { NodeKey } from "../../shared/models/docs";
 import {
   DndContext,
   closestCenter,
@@ -12,7 +13,6 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { Id } from "../../convex/_generated/dataModel";
 import { NodesTreeRow } from "./NodesTreeRow";
 import { useNodesTree } from "./NodesTreeContext";
 
@@ -93,8 +93,8 @@ export const NodesTree = () => {
                 model.toggleExpandedItem(itemId);
               }}
               onSelect={(itemId, modifier) => {
-                const nodeId = itemId as Id<"nodes">;
-                const node = nodes.find((n) => n._id === nodeId);
+                const nodeId = itemId as NodeKey;
+                const node = nodes.find((n) => n.key === nodeId);
                 if (!node) return;
 
                 if (modifier !== "shift") {
@@ -114,11 +114,11 @@ export const NodesTree = () => {
                   return;
                 }
 
-                const selectedNodes = model.app.seletedNodes;
+                const selectedNodes = model.app.selectedNodes;
                 if (selectedNodes.includes(node))
                   model.app.setSelectedEntity({
                     kind: "nodes",
-                    nodes: selectedNodes.filter((n) => n._id !== nodeId),
+                    nodes: selectedNodes.filter((n) => n.key !== nodeId),
                   });
                 else
                   model.app.setSelectedEntity({

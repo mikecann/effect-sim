@@ -1,5 +1,5 @@
 import { RangeSlider, Stack, Text } from "@mantine/core";
-import type { RangeProp } from "../../../common/props/inspectableProps";
+import type { RangeProp } from "../../../../shared/effects/inspectableProps";
 
 type RangePropEditorProps = {
   label: string;
@@ -39,7 +39,3 @@ export function RangePropEditor({
     </Stack>
   );
 }
-
-
-
-

@@ -8,12 +8,27 @@ import "./index.css";
 import App from "./App.tsx";
 import { RouteProvider } from "./router.ts";
 import { ConfirmationProvider } from "./common/confirmation/ConfirmationProvider";
-import { MantineProvider } from "@mantine/core";
+import {
+  createTheme,
+  InputWrapper,
+  MantineProvider,
+  v8CssVariablesResolver,
+} from "@mantine/core";
 import { AppProvider } from "./common/AppContext.tsx";
 import { ProjectFrameProvider } from "./common/ProjectFixedFrameProvider";
 import { AppSyncer } from "./common/models/AppSyncer.tsx";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+
+// Mantine 9 changed some defaults; keep the editor looking as it did on 8.
+const theme = createTheme({
+  defaultRadius: "sm",
+  components: {
+    InputWrapper: InputWrapper.extend({
+      styles: { label: { fontWeight: 500 } },
+    }),
+  },
+});
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");
@@ -34,7 +49,11 @@ else
     <StrictMode>
       <ConvexProvider client={convex}>
         <RouteProvider>
-          <MantineProvider defaultColorScheme="dark">
+          <MantineProvider
+            theme={theme}
+            defaultColorScheme="dark"
+            cssVariablesResolver={v8CssVariablesResolver}
+          >
             <ConfirmationProvider>
               <AppProvider>
                 <ProjectFrameProvider>

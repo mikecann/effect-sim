@@ -8,7 +8,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /**
  * Fields that should not have setters generated (immutable after creation).
  */
-const READONLY_FIELDS = ["_id", "_creationTime"] as const;
+const READONLY_FIELDS = ["_id", "_creationTime", "key", "projectId"] as const;
 const READONLY_FIELDS_SET = new Set<string>(READONLY_FIELDS);
 
 /**
@@ -16,7 +16,8 @@ const READONLY_FIELDS_SET = new Set<string>(READONLY_FIELDS);
  * - Getters for reading (e.g., `model.name`)
  * - Setter functions for writing (e.g., `model.setName(value)`)
  *
- * Note: `_id` and `_creationTime` do not get setters as they are immutable.
+ * Note: `_id`, `_creationTime`, `key` and `projectId` do not get setters as they
+ * never change.
  *
  * IMPORTANT: Call this AFTER makeAutoObservable, not before.
  * MobX doesn't handle dynamically-added getters well if they exist before it runs.

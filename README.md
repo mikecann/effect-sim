@@ -1,291 +1,121 @@
-![alt text](docs/ss1.png)
+![The editor](docs/ss1.png)
 
 # Effect Sim
 
-A Convex-powered application for designing and controlling LED light displays. Create complex lighting sequences on a 3D mesh visualization before deploying them to your actual hardware.
+Effect Sim runs Mike's outdoor Christmas light display: about 2,000 WLED pixels strung around the house, plus a few smart plugs. It has five parts:
 
-## Overview
+- **Editor** (`src/`): a React app with a 3D model of the house, where you place the LED strings, build sequences on a timeline of effects and put them into playlists. It previews everything in the browser.
+- **Convex backend** (`convex/`): the projects, nodes, sequences and playlists, the display's on/off state and mode, HWIR's heartbeat and the camera mapping sessions.
+- **HWIR** (`hardware-interface-runtime/`), the hardware interface runtime: a headless React (react-nil) process on a Mac next to the lights. It plays the display's playlist on the strings over DDP, switches the plug through Home Assistant and reports back to Convex.
+- **Lights** (`ios/`): an iPhone app that turns the display on and off, picks the playlist or sequence and sets the brightness, with a Control Center toggle, a widget and Siri phrases.
+- **Camera mapping** (`tools/mapping/`): a CLI that photographs coded patterns on the lights, works out where every LED is, and hands the points to the editor to place them on the house.
 
-Effect Sim allows you to:
+Effects live in `shared/`, so the editor, HWIR and Convex's prop checks all use the same code.
 
-- **Visualize your space** - Import a 3D model of your garden, house, or any space (created with tools like Polycam)
-- **Design light layouts** - Place LED strings on your 3D mesh with precise positioning
-- **Create sequences** - Build complex lighting animations using a timeline-based sequencer
-- **Control hardware** - Deploy your sequences to actual LED strings via a headless runtime
-- **Organize with playlists** - Chain multiple sequences together for continuous playback
+```mermaid
+flowchart LR
+  Editor["Editor (browser)"] -- "editor.sync" --> Convex[(Convex)]
+  Phone["Lights iPhone app"] -- "display mode, brightness" --> Convex
+  Mapping["Mapping CLI + camera"] -- "sessions, 2D points" --> Convex
+  Convex -- "project, display, mapping requests" --> HWIR["HWIR on Tinker Desk"]
+  HWIR -- "heartbeat, acks" --> Convex
+  HWIR -- "DDP over UDP" --> WLED["WLED strings"]
+  HWIR -- "plug on/off" --> HA["Home Assistant"]
+```
 
-## Features
+`docs/rebuild-plan.md` has the design behind the November 2026 rebuild: the data model, the role tokens, the state machines, effects, mapping and the cutover steps.
 
-- 🎨 **3D Visualization** - View your lighting design in a 3D environment with day/night mode
-- 🎬 **Timeline Sequencer** - Create animations using a familiar timeline interface (similar to video editing software)
-- 💡 **Effect Library** - Built-in effects like rainbow, fire, comet, sparkle, fireflies, and more
-- 🔗 **Virtual Strings** - Combine multiple strings or select segments to act as a single string
-- 📋 **Playlists** - Chain sequences together for continuous playback
-- 🔌 **Switch Control** - Control smart plugs/switches alongside your lights
-- 🎯 **Real-time Preview** - See your effects play out in real-time in the 3D viewer
-- 🔄 **Auto-sync** - Changes sync automatically across multiple instances via Convex
-- 🚀 **Hardware Runtime** - Headless runtime for deploying to actual hardware
+## Getting started
 
-## Tech Stack
-
-- **Frontend**: React 19, Vite, TypeScript
-- **Backend**: Convex (serverless backend)
-- **State Management**: MobX (local-first with Convex sync)
-- **UI**: Mantine
-- **3D**: Three.js, React Three Fiber, Drei
-- **Layout**: FlexLayout (docking panels)
-- **Package Manager**: Bun
-- **Hardware Runtime**: React Nil (headless React)
-
-## Prerequisites
-
-- [Bun](https://bun.sh/) (package manager and runtime)
-- [Convex CLI](https://docs.convex.dev/cli) - Install with `npm install -g convex`
-- Node.js (for Convex CLI if not using Bun)
-
-## Getting Started
-
-### 1. Clone and Install
+You need [Bun](https://bun.sh/) 1.4 or later and Node 22.15 or later (ESLint runs on Node).
 
 ```bash
-git clone <repository-url>
-cd effect-sim
 bun install
-```
-
-### 2. Set Up Convex
-
-If you haven't already, create a Convex account and initialize your project:
-
-```bash
-convex dev
-```
-
-This will:
-
-- Create a new Convex project (or connect to existing one)
-- Generate the necessary configuration files
-- Start the Convex dev server
-
-**Note**: The Convex dev server should be kept running. The project rules specify that both Convex dev and Vite dev servers should be running at all times.
-
-### 3. Start Development Servers
-
-The project uses separate commands for frontend and backend. You'll need to run both:
-
-**Terminal 1 - Convex Backend:**
-
-```bash
-convex dev
-```
-
-**Terminal 2 - Frontend:**
-
-```bash
-bun run dev:frontend
-```
-
-Or use the combined command (runs both in parallel):
-
-```bash
+npx convex deployment create local --select   # first time, writes .env.local
 bun run dev
 ```
 
-The frontend will open automatically at `http://localhost:5173` (or your configured Vite port).
+Later on, `npx convex deployment select local` picks the local backend again. `bun run dev` starts `convex dev` and Vite together and opens the editor.
 
-### 4. Create Your First Project
-
-1. When you first load the app, you'll see a welcome screen
-2. Click "Create New Project" and give it a name
-3. Start adding strings, creating sequences, and building your lighting display!
-
-## Project Structure
-
-```
-effect-sim/
-├── convex/              # Convex backend code
-│   ├── schema.ts        # Database schema definitions
-│   └── functions.ts     # Server functions (minimal - most logic is client-side)
-├── src/                 # Frontend React application
-│   ├── common/          # Shared frontend code
-│   │   └── models/      # MobX models (UI-specific)
-│   └── ...              # React components and UI code
-├── shared/              # Code shared between frontend and backend
-│   └── models/          # Shared MobX models (data layer)
-├── hardware-interface-runtime/  # Headless runtime for hardware control
-│   ├── models/          # Runtime-specific models
-│   └── supervisor.ts    # Runs the runtime and applies safe updates
-└── public/              # Static assets (3D models, etc.)
-```
-
-## Key Concepts
-
-### MobX Local-First Architecture
-
-Effect Sim uses MobX for state management with a custom sync layer to Convex. This provides:
-
-- **Instant updates** - Changes appear immediately in the UI
-- **Optimistic updates** - No waiting for server round-trips
-- **Fine-grained reactivity** - Only components using changed data re-render
-- **Automatic syncing** - Changes sync to Convex in the background
-
-The architecture uses:
-
-- **Shared Models** (`shared/models/`) - Pure data models with no UI dependencies
-- **UI Models** (`src/common/models/`) - Models that can contain UI-specific state (mouse positions, element IDs, etc.)
-- **TableSyncer** - Automatically syncs MobX models to/from Convex tables
-
-### Effects System
-
-Effects are React components that define lighting animations. They:
-
-- Receive props for configuration (speed, size, intensity, color, etc.)
-- Use `useEffectFrame` hook to receive frame timing information
-- Can access the current frame ratio (0-1) within their event duration
-- Are shared between the UI preview and hardware runtime
-
-Example effects: `rainbow`, `fire`, `comet`, `sparkle`, `fireflies`, `setColor`, `twinkle`
-
-### Nodes
-
-Nodes represent elements in your lighting setup:
-
-- **String Nodes** - LED strings with IP address, port, LED count, and 3D path
-- **Virtual String Nodes** - Combinations of string segments that act as one
-- **Switch Nodes** - Smart plugs/switches for controlling power
-- **Folder Nodes** - Organizational containers for grouping nodes
-
-### Sequences and Playlists
-
-- **Sequences** - Timeline-based animations with tracks and events
-- **Tracks** - Horizontal rows in the sequencer (like audio/video tracks)
-- **Events** - Effect instances placed on tracks with start/end frames
-- **Playlists** - Ordered lists of sequences that play continuously
-
-## Hardware Interface Runtime (HWIR)
-
-The HWIR is a headless process that runs on a separate machine (Mac mini, Raspberry Pi, etc.) to control your actual hardware.
-
-### Running HWIR
+The editor asks for its token before it can save. Make one for your local backend and paste it into the editor's token modal:
 
 ```bash
-bun run hwir
+npx convex env set EDITOR_TOKEN "$(openssl rand -hex 24)"
+npx convex env get EDITOR_TOKEN
 ```
 
-The CLI will prompt you to select a project and playlist.
+For real data, import a production backup into the local backend with `npx convex import --replace-all <zip>`.
 
-### CLI Options
+`/machines` in the editor shows every state machine, with its states, transitions and rows.
+
+## Adding an effect
+
+Each effect is one file in `shared/effects/string/` (or `switch/` for plugs) that calls `defineEffect`:
+
+```ts
+export const myEffect = defineEffect({
+  id: "myEffect", // stored on events, so never change it once used
+  name: "My effect",
+  icon: "✨",
+  props: z.object({ color: inspectableProps.color, speed: inspectableProps.bounded(0, 10) }),
+  defaults: { color: [255, 255, 255], speed: 1 },
+  render: function MyEffect({ string, props }) {
+    useEffectFrame((frame, random) => {
+      // string.setPixel(i, r, g, b), string.getNormalisedPosition(i), ...
+    });
+    return null;
+  },
+});
+```
+
+Then add one line for it to `stringEffects` (or `switchEffects`) in `shared/effects/registry.ts`. The order there is the editor's order. Give every number prop bounds with `inspectableProps.bounded`, as Convex rejects anything outside them.
+
+The effect API is in `shared/effects/api.ts`. `string.getPosition(i)` gives an LED's position in metres and `getNormalisedPosition(i)` gives it within the house's box, so spatial effects like `wipe` and `radialPulse` look the same on the lights as in the editor. For anything random use the `random` that `useEffectFrame` passes in (or `useEffectRandom()` for set-up), never `Math.random`, so scrubbing and the real lights draw the same frames.
+
+## Running HWIR
 
 ```bash
-# Normal startup (always prompts)
-bun run hwir
-
-# Specify project/playlist directly (skips prompts)
-bun run hwir -p <projectId> -l <playlistId>
+bun run hwir                                   # prompts for a project and playlist
+bun run hwir -p <projectId> -l <playlistId> --dry-run
 ```
 
-### Auto-Update System
+`bun run hwir` starts a supervisor that runs the runtime, restarts it when it exits and, with `HWIR_AUTO_UPDATE=true`, keeps it on `origin/main`. Each new commit is checked in a staging worktree (install, typecheck, a `--smoke` boot) before HWIR switches to it, and if the new code crash-loops it rolls back to the last good commit.
 
-`bun run hwir` starts a small supervisor that runs the runtime and, with `HWIR_AUTO_UPDATE=true` (in `.env.local`), keeps it on the latest `main`. It only fast-forwards, checks every new commit before switching to it, and rolls back if the runtime crash-loops afterwards. See [hardware-interface-runtime/README.md](hardware-interface-runtime/README.md).
+`--dry-run` runs everything but blocks UDP, WLED and plug calls, Home Assistant and Convex mutations, so it can't fight the live runtime. `--smoke` boots, runs about two seconds of frames with no side effects and exits. HWIR's token (`HWIR_TOKEN`) and the Home Assistant settings go in `.env.local`.
 
-### macOS Launch Agent Setup
+[hardware-interface-runtime/README.md](hardware-interface-runtime/README.md) covers the flags, string connections, mapping mode, the heartbeat and the supervisor in full.
 
-For production use on macOS, you can set up a launch agent:
+## Camera mapping
+
+[tools/mapping/README.md](tools/mapping/README.md) is the runbook for a mapping night: setup, cameras, viewpoints, the capture itself and the review in the editor's Mapping panel.
+
+## Lights iPhone app
+
+Copy `ios/Secrets.example.xcconfig` to `ios/Secrets.xcconfig` and put the deployment's `REMOTE_TOKEN` in it, then build and install with `ios/scripts/install-phone.sh`. The app writes the `displayControls` row (`convex/display.ts`), which HWIR follows live.
+
+## Testing, lint and CI
 
 ```bash
-# Install launch agent
-./install-launch-agent.sh
-
-# Uninstall launch agent
-./uninstall-launch-agent.sh
+bun run typecheck
+bun run lint
+bun run test        # vitest, including convex-test for the backend
 ```
 
-See `hardware-interface-runtime/README.md` for more details.
+Use `bun run test`, not `bun test` (that's Bun's own runner). Lint is [mikecann-lint](https://github.com/mikecann/mikecann-lint) plus this repo's rules in `eslint-rules/`. Problems that were already there when it went in are baselined in `eslint-suppressions.json`. GitHub Actions (`.github/workflows/ci.yml`) runs all three on every push and pull request.
 
-## Development
+## Deployments
 
-### Available Scripts
+- **Convex**: production is `aromatic-cardinal-985`, used by HWIR, the editor and the Lights app. It's deployed by hand with `npx convex deploy`, never from CI.
+- **Editor**: a Cloudflare Worker serving the built app (`wrangler.jsonc`). Build it against production and deploy:
 
-```bash
-# Development
-bun run dev              # Run both frontend and backend
-bun run dev:frontend    # Frontend only (Vite)
-bun run dev:backend     # Backend only (Convex)
+  ```bash
+  VITE_CONVEX_URL=https://aromatic-cardinal-985.convex.cloud bunx vite build
+  bunx wrangler deploy
+  ```
 
-# Hardware Runtime
-bun run hwir            # Run hardware interface runtime
-
-# Testing
-bun run test            # Run tests
-bun run dev:test        # Run tests in watch mode
-
-# Type Checking
-bun run typecheck       # Type check the entire project
-
-# Linting
-bun run lint            # Check for linting errors
-bun run lint:fix        # Auto-fix linting errors
-```
-
-### Code Style
-
-- Prefer short, focused functions (≤ 20 lines)
-- Use early returns / guard clauses
-- Prefer `const` by default
-- Use descriptive naming (booleans prefixed with `is`, `has`, `can`, `should`)
-- Inline event handlers in JSX (avoid hoisting unless reused)
-- Push Convex queries/mutations down into leaf components
-- Use React Contexts to avoid prop drilling
-
-See `.cursor/rules/my-project-rules.mdc` and project rules for more details.
-
-### Architecture Notes
-
-- **No authentication** - Currently open (add auth if deploying publicly)
-- **Minimal server code** - Most logic is client-side with MobX
-- **Single mutation** - All changes go through `applyOperations` mutation
-- **Shared code** - `/shared` contains code used by both frontend and backend
-- **React Nil** - Hardware runtime uses React without DOM
-
-## 3D Models
-
-The app supports GLB/GLTF 3D models. You can:
-
-- Create models using Polycam (LiDAR scanning on iPhone)
-- Optimize in Blender (reduce file size)
-- Place them in the `public/` directory
-- Load them in your project
-
-## Contributing
-
-This is a personal project, but contributions and suggestions are welcome! Some areas that could use improvement:
-
-- Authentication/authorization
-- Undo/redo functionality
-- More effect types
-- Better 3D model import/editing
-- True local-first with CRDTs/OT
-- Client-side Convex IDs
+- **HWIR**: runs on Tinker Desk, a Mac by the house, under launchd (`com.mikecann.effect-sim.hwir.plist`), with `HWIR_AUTO_UPDATE=true`. Anything merged to `main` reaches the lights within about a minute, once the supervisor's checks pass. `check-hwir-status.sh` shows whether the service is running.
+- **Lights**: installed straight onto the phone with `ios/scripts/install-phone.sh`.
 
 ## License
 
-Apache License 2.0 - See [LICENSE.txt](LICENSE.txt) for details.
-
-## Acknowledgments
-
-Built with:
-
-- [Convex](https://www.convex.dev/) - Backend as a service
-- [MobX](https://mobx.js.org/) - State management
-- [Mantine](https://mantine.dev/) - UI components
-- [React Three Fiber](https://docs.pmnd.rs/react-three-fiber/) - 3D rendering
-- [FlexLayout](https://github.com/caplin/FlexLayout) - Docking panels
-- [React Nil](https://github.com/pmndrs/react-nil) - Headless React
-
----
-
-**Note**: This project was built for controlling Christmas lights displays, but can be adapted for any LED lighting project!
-
-## Phone remote
-
-`ios/` is a SwiftUI iPhone app, "Lights", that turns the display on and off, picks the playlist or sequence, and sets brightness. It also adds a Control Center toggle, a widget and Siri phrases. It writes the `displayControls` row (convex/display.ts), which HWIR follows live when it runs with `--playlist`. The row runs on the displayControl state machine, which you can see at `/machines` in the editor. Build and install it with `ios/scripts/install-phone.sh`.
+Apache License 2.0, see [LICENSE.txt](LICENSE.txt).

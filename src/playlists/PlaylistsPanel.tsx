@@ -29,7 +29,7 @@ export default function PlaylistsPanel() {
         <ScrollArea style={{ flex: 1 }}>
           <div>
             {project.playlists.map((playlist) => (
-              <PlaylistRow key={playlist._id} playlist={playlist} />
+              <PlaylistRow key={playlist.key} playlist={playlist} />
             ))}
             {project.playlists.length === 0 && (
               <Text c="dimmed" size="sm" ta="center" py="xl" p="md">

@@ -2,8 +2,8 @@ import { useEffect, useCallback } from "react";
 import { notifications } from "@mantine/notifications";
 import type { NodeDragData, TrackDropData } from "./useNodeToTrackDrag";
 import { useSequence } from "../SequencerContext";
-import { createTempId } from "../../../shared/models/types";
-import { stringEffectDefinitionsArray } from "../../common/effects/stringEffectDefinitions";
+import { createId } from "../../../shared/models/types";
+import { stringEffects } from "../../../shared/effects/registry";
 
 export function NodeToTrackDropHandler() {
   const sequence = useSequence();
@@ -72,18 +72,8 @@ export function NodeToTrackDropHandler() {
       let defaultEffectId: string;
 
       if (nodeKind === "string") {
-        // For string nodes, use the first available effect as default
-        const defaultEffect = stringEffectDefinitionsArray[0];
-        if (!defaultEffect) {
-          notifications.show({
-            title: "No effects available",
-            message: "No string effects are available",
-            color: "red",
-          });
-          return;
-        }
         eventKind = "string_effect";
-        defaultEffectId = defaultEffect.id;
+        defaultEffectId = stringEffects[0].id;
       } else if (nodeKind === "switch") {
         eventKind = "switch_effect";
         defaultEffectId = "turnOn";
@@ -96,7 +86,7 @@ export function NodeToTrackDropHandler() {
       };
 
       // Create the event
-      const eventId = createTempId("sequences");
+      const eventId = createId();
       try {
         sequence.sequence.addEvent(trackData.trackId, {
           id: eventId,

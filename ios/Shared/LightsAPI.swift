@@ -25,6 +25,7 @@ enum LightsAPI {
         if let isOn { args["isOn"] = isOn }
         if let brightness { args["brightness"] = brightness }
         if let mode { args["mode"] = ["kind": mode.kind.rawValue, "id": mode.id] }
+        if let token = Config.remoteToken { args["token"] = token }
         try await call("mutation", "display:request", args: args, as: RequestOutcome.self)?.check()
     }
 

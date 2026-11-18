@@ -1,29 +1,27 @@
 import { useApp } from "../AppContext";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { api } from "../../../convex/_generated/api";
 import { Loader, Box } from "@mantine/core";
-import { TableSyncer } from "./TableSyncer";
-import { ProjectSyncer } from "./ProjectSyncer";
-import { ProjectModel } from "../../../shared/models/ProjectModel";
+import { observer } from "mobx-react-lite";
+import { ProjectSyncer } from "./sync/ProjectSyncer";
 import { usePersistedQuery } from "../hooks/usePersistedQuery";
+import { EditorTokenModal } from "../auth/EditorTokenModal";
 
-export const AppSyncer = ({ children }: { children: ReactNode }) => {
+/** Loads the projects, and keeps the open one saved. */
+export const AppSyncer = observer(({ children }: { children: ReactNode }) => {
   const app = useApp();
-
-  // We still need this query here for the loading state check
   const { data: projects } = usePersistedQuery(api.functions.listProjects);
 
-  const hasDataBeenLoaded = projects != undefined;
+  useEffect(() => {
+    if (projects) app.setProjectsFromServer(projects);
+  }, [app, projects]);
 
-  if (!hasDataBeenLoaded)
+  if (!projects)
     return (
       <Box
         style={{
           position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          inset: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -35,17 +33,15 @@ export const AppSyncer = ({ children }: { children: ReactNode }) => {
 
   return (
     <>
-      <TableSyncer
-        table="projects"
-        models={app.projects}
-        query={api.functions.listProjects}
-        queryArgs={{}}
-        createModel={(doc) => new ProjectModel(doc)}
-      />
       {app.project ? (
-        <ProjectSyncer key={app.project._id} project={app.project} />
+        <ProjectSyncer
+          key={app.project._id}
+          project={app.project}
+          serverDoc={projects.find((p) => p._id === app.project?._id) ?? null}
+        />
       ) : null}
+      <EditorTokenModal />
       {children}
     </>
   );
-};
+});

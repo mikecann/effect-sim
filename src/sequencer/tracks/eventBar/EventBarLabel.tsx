@@ -78,7 +78,7 @@ export function EventBarLabel({ event: eventUI }: EventBarLabelProps) {
                   node.icon?.kind === "emoji" ? node.icon.emoji : "❓";
                 return (
                   <Avatar
-                    key={node._id}
+                    key={node.key}
                     size="sm"
                     radius="xl"
                     style={{

@@ -1,7 +1,7 @@
 import { makeAutoObservable } from "mobx";
 import type { Segment } from "./types";
 import type { VirtualStringNodeModel } from "./VirtualStringNodeModel";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { NodeKey } from "./docs";
 import type { AppModel } from "../../src/common/models/AppModel";
 
 export class VirtualStringNodeSegmentModel {
@@ -34,7 +34,7 @@ export class VirtualStringNodeSegmentModel {
   get stringOptions() {
     if (!this.virtualStringNode.project) return [];
     return this.virtualStringNode.project.stringDocs.map((str) => ({
-      value: str._id,
+      value: str.key,
       label: str.name,
     }));
   }
@@ -43,7 +43,7 @@ export class VirtualStringNodeSegmentModel {
     if (!this.virtualStringNode.project) return null;
     return (
       this.virtualStringNode.project.stringDocs.find(
-        (str) => str._id === this.segment.nodeId,
+        (str) => str.key === this.segment.nodeId,
       ) ?? null
     );
   }
@@ -80,7 +80,7 @@ export class VirtualStringNodeSegmentModel {
     this.virtualStringNode.setSegments(newSegments);
   }
 
-  updateNodeId(nodeId: Id<"nodes">) {
+  updateNodeId(nodeId: NodeKey) {
     this.update({
       ...this.segment,
       nodeId,
