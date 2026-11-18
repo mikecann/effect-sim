@@ -55,9 +55,11 @@ bun install
 
 ### 2. Set Up Convex
 
-If you haven't already, create a Convex account and initialize your project:
+Develop against a local Convex backend. Convex 1.50 dropped `convex dev --local`; pick the local deployment once per checkout instead (it writes `.env.local`):
 
 ```bash
+npx convex deployment create local --select   # first time
+npx convex deployment select local            # afterwards
 convex dev
 ```
 
