@@ -28,6 +28,10 @@ bun run hwir -p <projectId> -l <playlistId> --dry-run
 bun hardware-interface-runtime/index.tsx -p <projectId> -l <playlistId> --smoke
 ```
 
+## Token and heartbeat
+
+Every Convex mutation HWIR sends carries `HWIR_TOKEN`, read from `.env.local` (the same value as the deployment's `HWIR_TOKEN` env var, see `convex/roles.ts`). Without it, mutations work only until the deployment sets `REQUIRE_TOKENS=true`. Every 10 s HWIR sends a heartbeat (`hwir:heartbeat`: commit, frame rate, each string's connection), which keeps the `hwirPresence` machine online. `--dry-run` and `--smoke` send none of these.
+
 ## Supervisor and updates
 
 `bun run hwir` runs `supervisor.ts`, which runs the runtime (`index.tsx`, with the same arguments) as a child and restarts it with backoff (1 s doubling to 30 s) whenever it exits. The supervisor only uses Node built-ins, so it keeps working when the rest of the repo is broken.
