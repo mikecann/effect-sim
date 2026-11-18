@@ -481,6 +481,54 @@ describe("mappingSession", () => {
     expect(discardedPhotos).toHaveLength(5);
   });
 
+  test("a photo another view holds can't be attached again", async () => {
+    const { t, projectId, send } = await setupMapping();
+    const photo = await t.run(
+      async (ctx) => await ctx.storage.store(new Blob(["jpeg"])),
+    );
+    const view = (name: string) => ({
+      name,
+      uploadedAt: 1,
+      photo,
+      imageWidth: 10,
+      imageHeight: 10,
+      strings: [],
+    });
+    await t.mutation(api.mapping.addView, { ...send.editor, view: view("a") });
+    // The same view again (a retried upload) is fine.
+    await t.mutation(api.mapping.addView, { ...send.editor, view: view("a") });
+    // Another view in this session, or in a later one, is refused.
+    await expect(
+      t.mutation(api.mapping.addView, { ...send.editor, view: view("b") }),
+    ).rejects.toThrow(/another view/);
+    await t.mutation(api.mapping.discard, send.editor);
+    const started = await t.mutation(api.mapping.start, {
+      token: tokens.editor,
+      projectId,
+    });
+    if (started.status !== "done") throw new Error("didn't start");
+    await expect(
+      t.mutation(api.mapping.addView, {
+        token: tokens.editor,
+        sessionId: started.id as Id<"mappingSessions">,
+        view: view("a"),
+      }),
+    ).rejects.toThrow(/another view/);
+    await expect(
+      t.mutation(api.mapping.addView, {
+        token: tokens.editor,
+        sessionId: started.id as Id<"mappingSessions">,
+        view: {
+          ...view("c"),
+          photo: await t.run(
+            async (ctx) => await ctx.storage.store(new Blob(["x"])),
+          ),
+          darkPhoto: photo,
+        },
+      }),
+    ).rejects.toThrow(/another view/);
+  });
+
   test("views are added while capturing, replaced by name, and refused once in review", async () => {
     const { t, sessionId, send } = await setupMapping();
     const upload = async () =>

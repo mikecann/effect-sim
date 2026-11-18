@@ -192,6 +192,22 @@ export const addView = editorMutation({
       });
     const views = row.views ?? [];
     const replaced = views.find((existing) => existing.name === view.name);
+    // A photo belongs to one view: deleting a view's photos (replacing it,
+    // or the clean-up after a discard) must never take another view's. So a
+    // photo another view already holds is refused; every upload is new.
+    const ids = [view.photo, view.darkPhoto].filter((id) => id !== undefined);
+    if (new Set(ids).size !== ids.length)
+      throw new ConvexError({
+        code: "NOT_ACCEPTED",
+        message: "A view's photo and dark photo must be different files.",
+      });
+    const ownIds = new Set([replaced?.photo, replaced?.darkPhoto]);
+    for (const id of ids)
+      if (!ownIds.has(id) && (await isHeld(ctx, id)))
+        throw new ConvexError({
+          code: "NOT_ACCEPTED",
+          message: "That photo belongs to another view; upload it again.",
+        });
     if (replaced)
       for (const id of [replaced.photo, replaced.darkPhoto])
         if (id && id !== view.photo && id !== view.darkPhoto)
