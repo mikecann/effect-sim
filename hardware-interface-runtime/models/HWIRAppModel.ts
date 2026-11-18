@@ -14,6 +14,9 @@ export class HWIRAppModel {
   // or if the remote has never been used: then HWIR plays its startup playlist.
   control: DisplaySettings | null = null;
 
+  /** The project's nodes, sequences and playlists have arrived from Convex. */
+  dataLoaded = false;
+
   constructor(
     public readonly startupSettings: {
       projectId: Id<"projects">;
@@ -85,6 +88,10 @@ export class HWIRAppModel {
 
   get stringsMap(): Map<Id<"nodes">, HWStringModel> {
     return new Map(this.strings.map((s) => [s.string._id, s]));
+  }
+
+  setDataLoaded() {
+    this.dataLoaded = true;
   }
 
   setProject(project: ProjectModel) {

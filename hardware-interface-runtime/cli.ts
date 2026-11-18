@@ -11,6 +11,8 @@ export const runSetupCLI = async (convexUrl: string) => {
   program
     .option("-p, --project <id>", "Project ID")
     .option("-l, --playlist <id>", "Playlist ID (or 'null' for listen mode)")
+    .option("--dry-run", "Run without sending UDP, mutations or Home Assistant")
+    .option("--smoke", "Boot, run ~2 s of frames without side effects, exit")
     .parse(process.argv);
 
   const options = program.opts();
@@ -18,6 +20,10 @@ export const runSetupCLI = async (convexUrl: string) => {
 
   const projectId: Id<"projects"> = await iife(async () => {
     if (options.project) return options.project as Id<"projects">;
+    if (options.smoke) {
+      logger.error("--smoke needs --project");
+      process.exit(1);
+    }
     const projects = await client.query(api.functions.listProjects, {});
     if (projects.length === 0) {
       logger.error("No projects found.");
@@ -36,6 +42,7 @@ export const runSetupCLI = async (convexUrl: string) => {
   const playlistId = await iife(async () => {
     if (options.playlist === "null") return null;
     if (options.playlist) return options.playlist as Id<"playlists">;
+    if (options.smoke) return null;
     const playlists = await client.query(
       api.functions.listPlaylistsForProject,
       {

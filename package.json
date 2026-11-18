@@ -7,7 +7,7 @@
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
     "dev:frontend": "vite --open",
     "dev:backend": "convex dev",
-    "hwir": "bun hardware-interface-runtime/index.tsx",
+    "hwir": "bun hardware-interface-runtime/supervisor.ts",
     "dev:ts": "tsc -b -w",
     "dev:test": "vitest",
     "test": "vitest run",

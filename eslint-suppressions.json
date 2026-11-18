@@ -32,7 +32,7 @@
   },
   "hardware-interface-runtime/hooks.ts": {
     "react-hooks/exhaustive-deps": {
-      "count": 6
+      "count": 7
     }
   },
   "shared/models/ProjectModel.ts": {

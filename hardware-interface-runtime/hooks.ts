@@ -37,6 +37,7 @@ export const useProjectModel = (model: HWIRAppModel) => {
     if (!model.project) return;
     if (!projectData) return;
     model.project.updateFromServerData(projectData);
+    model.setDataLoaded();
   }, [model.project, projectData]);
 };
 
