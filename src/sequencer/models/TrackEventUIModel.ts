@@ -2,8 +2,10 @@ import { makeAutoObservable } from "mobx";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
 import type { SequenceTrackUIModel } from "./SequenceTrackUIModel";
 import type { EventDragPreviewState } from "./SequenceUIModel";
-import { stringEffectDefinitions } from "../../common/effects/stringEffectDefinitions";
-import { switchEffectDefinitions } from "../../common/effects/switchEffectDefinitions";
+import {
+  findStringEffect,
+  findSwitchEffect,
+} from "../../../shared/effects/registry";
 import { MIN_CLIP_LENGTH_FRAMES } from "../sequencer";
 import { eventsOverlap } from "../tracks/eventBar/eventBarHelpers";
 
@@ -53,18 +55,12 @@ export class TrackEventUIModel {
   }
 
   get label() {
-    if (this.event.kind === "string_effect") {
-      const effectDef = Object.values(stringEffectDefinitions).find(
-        (def) => def.id === this.event.effectDefinitionId,
-      );
-      return effectDef?.name ?? this.event.effectDefinitionId;
-    } else if (this.event.kind === "switch_effect") {
-      const effectDef = Object.values(switchEffectDefinitions).find(
-        (def) => def.id === this.event.effectDefinitionId,
-      );
-      return effectDef?.name ?? this.event.effectDefinitionId;
-    }
-    return "Unknown";
+    const id = this.event.effectDefinitionId;
+    const effect =
+      this.event.kind === "string_effect"
+        ? findStringEffect(id)
+        : findSwitchEffect(id);
+    return effect?.name ?? id;
   }
 
   get displayStartFrame() {

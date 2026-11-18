@@ -1,8 +1,6 @@
 import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import type { SwitchNodeModel } from "../../../shared/models/SwitchNodeModel";
-import type { StringNodeModel } from "../../../shared/models/StringNodeModel";
-import type { VirtualStringNodeModel } from "../../../shared/models/VirtualStringNodeModel";
 import { SequenceRuntimeEffectModel } from "./SequenceRuntimeEffectModel";
 import { PlayheadModel } from "./PlayheadModel";
 import { ProjectModel } from "../../../shared/models/ProjectModel";
@@ -78,27 +76,18 @@ export class SequenceRuntimeModel {
     return this.activeEffects.filter((e) => e.kind === "switch");
   }
 
-  private get allStringNodes(): StringNodeModel[] {
-    return (this.project?.getNodesByKind("string") as StringNodeModel[]) ?? [];
-  }
-
-  private get allVirtualStringNodes(): VirtualStringNodeModel[] {
-    return (
-      (this.project?.getNodesByKind(
-        "virtual_string",
-      ) as VirtualStringNodeModel[]) ?? []
-    );
-  }
-
+  /** Every string and virtual string, for events that apply to all. */
   get allStringNodeIds(): NodeKey[] {
+    const project = this.project;
+    if (!project) return [];
     return [
-      ...this.allStringNodes.map((n) => n.key),
-      ...this.allVirtualStringNodes.map((n) => n.key),
+      ...project.strings.map((n) => n.key),
+      ...project.virtualStrings.map((n) => n.key),
     ];
   }
 
   private get allSwitchNodes(): SwitchNodeModel[] {
-    return (this.project?.getNodesByKind("switch") as SwitchNodeModel[]) ?? [];
+    return this.project?.getNodesByKind("switch") ?? [];
   }
 
   get allSwitchNodeIds(): NodeKey[] {
@@ -106,9 +95,7 @@ export class SequenceRuntimeModel {
   }
 
   get switchNodesMap(): Map<NodeKey, SwitchNodeModel> {
-    const map = new Map<NodeKey, SwitchNodeModel>();
-    for (const node of this.allSwitchNodes) map.set(node.key, node);
-    return map;
+    return new Map(this.allSwitchNodes.map((node) => [node.key, node]));
   }
 
   incrementLoopCount() {

@@ -1,18 +1,18 @@
 import type { NodeKey } from "../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import { StringNodeModel } from "../../shared/models/StringNodeModel";
+import type { EffectString } from "../../shared/effects/api";
+import {
+  normaliseInBounds,
+  type Bounds,
+  type Point3,
+} from "../../shared/geometry/stringLayout";
 
-export interface StringLedDataApi {
-  key: NodeKey;
-  ledCount: number;
-  setPixel(index: number, r: number, g: number, b: number): void;
-  setAllPixels(r: number, g: number, b: number): void;
-  getPixel(index: number): [number, number, number];
-  clear(): void;
-  multiplyAll(byValue: number): void;
-}
+const ORIGIN: Point3 = { x: 0, y: 0, z: 0 };
+const NO_BOUNDS: Bounds = { min: ORIGIN, max: ORIGIN };
 
-export class StringLedDataModel {
+/** The colours a string shows, as the effects write them. */
+export class StringLedDataModel implements EffectString {
   _data: Uint8Array;
   _allocatedSize: number;
 
@@ -31,6 +31,18 @@ export class StringLedDataModel {
 
   get ledCount() {
     return this.string.ledCount;
+  }
+
+  get bounds(): Bounds {
+    return this.string.project?.ledBounds ?? NO_BOUNDS;
+  }
+
+  getPosition(index: number): Point3 {
+    return this.string.filledPositions[index] ?? ORIGIN;
+  }
+
+  getNormalisedPosition(index: number): Point3 {
+    return normaliseInBounds(this.getPosition(index), this.bounds);
   }
 
   get data(): Uint8Array {

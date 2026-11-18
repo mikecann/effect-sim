@@ -1,26 +1,24 @@
 import type { NodeKey } from "../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import type { ProjectModel } from "../../shared/models/ProjectModel";
-import { StringLedDataModel, StringLedDataApi } from "./StringLedDataModel";
+import { StringLedDataModel } from "./StringLedDataModel";
+import type { EffectString } from "../../shared/effects/api";
 import { VirtualStringLedDataModel } from "./VirtualStringLedDataModel";
 
-export type StringsMap = Map<
-  NodeKey,
-  { data: Uint8Array; ledCount: number }
->;
+export type StringsMap = Map<NodeKey, { data: Uint8Array; ledCount: number }>;
 
 export class LedDataStoreModel {
   _stringModels = new Map<NodeKey, StringLedDataModel>();
   _virtualModels = new Map<NodeKey, VirtualStringLedDataModel>();
 
   constructor(public project: ProjectModel) {
-    makeAutoObservable<
-      LedDataStoreModel,
-      "_stringModels" | "_virtualModels"
-    >(this, {
-      _stringModels: false,
-      _virtualModels: false,
-    });
+    makeAutoObservable<LedDataStoreModel, "_stringModels" | "_virtualModels">(
+      this,
+      {
+        _stringModels: false,
+        _virtualModels: false,
+      },
+    );
   }
 
   get strings(): StringLedDataModel[] {
@@ -67,12 +65,12 @@ export class LedDataStoreModel {
     });
   }
 
-  get stringsAndVirtuals(): StringLedDataApi[] {
+  get stringsAndVirtuals(): EffectString[] {
     return [...this.strings, ...this.virtuals];
   }
 
-  get stringsAndVirtualsMap(): Map<NodeKey, StringLedDataApi> {
-    const map = new Map<NodeKey, StringLedDataApi>();
+  get stringsAndVirtualsMap(): Map<NodeKey, EffectString> {
+    const map = new Map<NodeKey, EffectString>();
     for (const string of this.strings) map.set(string.string.key, string);
 
     for (const virtual of this.virtuals)

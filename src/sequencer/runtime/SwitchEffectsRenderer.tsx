@@ -1,35 +1,24 @@
-import { EffectContext } from "../../common/effects/EffectProvider";
 import { useSequenceRuntime } from "./SequenceRuntimeContext";
-import type { SwitchEffectComponent } from "../../common/effects/switchEffectDefinitions";
-import type { SwitchNodeModel } from "../../../shared/models/SwitchNodeModel";
 
 export function SwitchEffectsRenderer() {
   const runtime = useSequenceRuntime();
-  const effects = runtime.activeSwitchEffects;
-  const nodesMap = runtime.switchNodesMap;
+  const nodes = runtime.switchNodesMap;
 
   return (
     <>
-      {effects.map((effect) => {
-        const Component = effect.component as SwitchEffectComponent;
-        if (!Component) return null;
-
-        const validatedProps = effect.validatedProps;
-        const targetNodeIds = effect.targetNodeIds;
-
-        return targetNodeIds.map((nodeId) => {
-          const node = nodesMap.get(nodeId);
+      {runtime.activeSwitchEffects.map((effect) => {
+        const definition = effect.switchEffect;
+        if (!definition) return null;
+        const Run = definition.Run;
+        return effect.targetNodeIds.map((nodeId) => {
+          const node = nodes.get(nodeId);
           if (!node) return null;
           return (
-            <EffectContext
+            <Run
               key={`${effect.trackId}-${effect.eventId}-${nodeId}`}
-              value={effect}
-            >
-              <Component
-                switch={node as SwitchNodeModel}
-                props={validatedProps}
-              />
-            </EffectContext>
+              switch={node}
+              rawProps={effect.rawProps}
+            />
           );
         });
       })}

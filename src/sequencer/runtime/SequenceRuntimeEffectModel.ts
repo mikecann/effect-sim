@@ -2,17 +2,25 @@ import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
 import type { SequenceRuntimeModel } from "./SequenceRuntimeModel";
-import { stringEffectDefinitionsMap } from "../../common/effects/stringEffectDefinitions";
-import { switchEffectDefinitionsMap } from "../../common/effects/switchEffectDefinitions";
+import type { EffectTiming } from "../../../shared/effects/api";
+import {
+  findStringEffect,
+  findSwitchEffect,
+} from "../../../shared/effects/registry";
+import { hashSeed } from "../../../shared/random";
 
-export class SequenceRuntimeEffectModel {
-  readonly seed = Math.random();
-
+/** One event while the playhead is inside it. */
+export class SequenceRuntimeEffectModel implements EffectTiming {
   constructor(
     public readonly runtime: SequenceRuntimeModel,
     public readonly event: AllTrackEventModels,
   ) {
-    makeAutoObservable(this);
+    makeAutoObservable(this, { runtime: false, event: false });
+  }
+
+  /** From the event's id, so it plays the same every time. */
+  get seed() {
+    return hashSeed(this.event.id);
   }
 
   get trackId() {
@@ -27,48 +35,29 @@ export class SequenceRuntimeEffectModel {
     return this.event.id;
   }
 
-  get effectId() {
-    return this.event.effectDefinitionId;
+  get stringEffect() {
+    return this.kind === "string"
+      ? findStringEffect(this.event.effectDefinitionId)
+      : null;
   }
 
-  get effectDefinition() {
-    if (this.kind === "string")
-      return stringEffectDefinitionsMap.get(this.effectId);
-
-    return switchEffectDefinitionsMap.get(this.effectId);
+  get switchEffect() {
+    return this.kind === "switch"
+      ? findSwitchEffect(this.event.effectDefinitionId)
+      : null;
   }
 
-  get validatedProps(): Record<string, unknown> {
-    const def = this.effectDefinition;
-    if (!def) return this.props;
-
-    const defaultProps = def.defaultProps ?? {};
-    if (!def.props || !this.props) return { ...defaultProps, ...this.props };
-
-    const parseResult = def.props.safeParse(this.props);
-    if (parseResult.success) return { ...defaultProps, ...parseResult.data };
-
-    return { ...defaultProps, ...this.props };
-  }
-
-  get component() {
-    // The renderers will cast this to the appropriate type
-    return this.effectDefinition?.component as unknown;
+  /** The props as the event saved them; each effect checks its own. */
+  get rawProps(): unknown {
+    return this.event.props;
   }
 
   get targetNodeIds(): NodeKey[] {
-    const nodeIds = this.nodeIds;
-    if (nodeIds !== "all") return nodeIds;
-
-    if (this.kind === "string") return this.runtime.allStringNodeIds;
-
-    return this.runtime.allSwitchNodeIds;
-  }
-
-  get nodeIds(): NodeKey[] | "all" {
-    return this.event.appliesTo.kind === "nodes"
-      ? this.event.appliesTo.nodeIds
-      : "all";
+    if (this.event.appliesTo.kind === "nodes")
+      return this.event.appliesTo.nodeIds;
+    return this.kind === "string"
+      ? this.runtime.allStringNodeIds
+      : this.runtime.allSwitchNodeIds;
   }
 
   get startFrame() {
@@ -77,10 +66,6 @@ export class SequenceRuntimeEffectModel {
 
   get endFrame() {
     return this.event.endFrame;
-  }
-
-  get props() {
-    return (this.event.props as Record<string, unknown>) ?? {};
   }
 
   get effectFrame() {

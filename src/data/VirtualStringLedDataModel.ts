@@ -2,8 +2,17 @@ import { makeAutoObservable } from "mobx";
 import { VirtualStringNodeModel } from "../../shared/models/VirtualStringNodeModel";
 import { LedDataStoreModel } from "./LedDataStoreModel";
 import { VirtualPixelModel } from "./VirtualPixelModel";
+import type { EffectString } from "../../shared/effects/api";
+import {
+  normaliseInBounds,
+  type Bounds,
+  type Point3,
+} from "../../shared/geometry/stringLayout";
 
-export class VirtualStringLedDataModel {
+const ORIGIN: Point3 = { x: 0, y: 0, z: 0 };
+
+/** A virtual string's colours, written through to the real strings under it. */
+export class VirtualStringLedDataModel implements EffectString {
   constructor(
     public ledData: LedDataStoreModel,
     public virtualString: VirtualStringNodeModel,
@@ -17,6 +26,18 @@ export class VirtualStringLedDataModel {
 
   get ledCount() {
     return this.virtualString.ledCount;
+  }
+
+  get bounds(): Bounds {
+    return this.ledData.project.ledBounds;
+  }
+
+  getPosition(index: number): Point3 {
+    return this.virtualString.filledPositions[index] ?? ORIGIN;
+  }
+
+  getNormalisedPosition(index: number): Point3 {
+    return normaliseInBounds(this.getPosition(index), this.bounds);
   }
 
   get virtualPixels(): VirtualPixelModel[] {
