@@ -41,6 +41,14 @@ export const MappingDisplay = observer(
       if (capturing?.shownSeq != null) acker.alreadyShown(capturing.shownSeq);
     }, [capturing, acker]);
 
+    // As in HeadlessLedDataDispatcher: frames say which settings they showed,
+    // so the display change into mapping is confirmed once one has gone out.
+    const version = app.controlVersion;
+    const renderedVersion = useRef(-1);
+    useEffect(() => {
+      renderedVersion.current = version;
+    }, [version]);
+
     useFrame(() => {
       const req = request.current;
       const strings = app.strings;
@@ -55,6 +63,7 @@ export const MappingDisplay = observer(
             link && rgb ? await link.send(rgb) : ("unreachable" as const),
         };
       });
+      app.frameShown(renderedVersion.current);
       if (!req) return;
       const seq = req.seq;
       void Promise.all(sends).then((results) => {

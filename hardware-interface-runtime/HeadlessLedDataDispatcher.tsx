@@ -2,7 +2,7 @@ import { useLedData } from "../src/data/LedDataStoreContext";
 import { useFrame } from "../src/common/utils/frames";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { observer } from "mobx-react-lite";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const scale = (
   data: Uint8Array,
@@ -27,6 +27,14 @@ export const HeadlessLedDataDispatcher = observer(
     // allocate every frame.
     const [scaled] = useState(() => new Map<string, Uint8Array>());
 
+    // The display settings this tree was rendered with: once the effect has
+    // run, the player for them is mounted, so the next frame shows them.
+    const version = app.controlVersion;
+    const renderedVersion = useRef(-1);
+    useEffect(() => {
+      renderedVersion.current = version;
+    }, [version]);
+
     useFrame(() => {
       // Off is brightness 0: keep sending black frames, as WLED goes back to
       // its own effect a few seconds after DDP data stops.
@@ -40,6 +48,7 @@ export const HeadlessLedDataDispatcher = observer(
             : scale(stringData.data, factor, scaled, key),
         );
       }
+      app.frameShown(renderedVersion.current);
     });
 
     return null;

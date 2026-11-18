@@ -17,6 +17,11 @@ export class HWIRAppModel {
   // or if the remote has never been used: then HWIR plays its startup playlist.
   control: DisplaySettings | null = null;
 
+  /** Goes up with every setControl; frames say which version they showed. */
+  controlVersion = 0;
+  private shownVersion = -1;
+  private shownWaiters: { version: number; resolve: () => void }[] = [];
+
   /** Each string's WLED link, by node key (String.tsx makes and closes them). */
   readonly links = new Map<NodeKey, StringLink>();
 
@@ -35,10 +40,15 @@ export class HWIRAppModel {
       playlistId: PlaylistKey | null;
     },
   ) {
-    makeAutoObservable(this, {
+    makeAutoObservable<HWIRAppModel, "shownVersion" | "shownWaiters">(this, {
       links: false,
       fpsMeter: false,
       plugStatus: false,
+      // Plain bookkeeping read from frames, not rendered.
+      shownVersion: false,
+      shownWaiters: false,
+      frameShown: false,
+      whenShown: false,
     });
   }
 
@@ -101,6 +111,25 @@ export class HWIRAppModel {
 
   setControl(control: DisplaySettings | null) {
     this.control = control;
+    this.controlVersion++;
+  }
+
+  /** A frame rendered with this control version has gone out to the strings. */
+  frameShown(version: number) {
+    // Frames before the project's data is in don't show anything real.
+    if (!this.dataLoaded || version <= this.shownVersion) return;
+    this.shownVersion = version;
+    const ready = this.shownWaiters.filter((w) => w.version <= version);
+    this.shownWaiters = this.shownWaiters.filter((w) => w.version > version);
+    for (const w of ready) w.resolve();
+  }
+
+  /** Resolves once a frame with this control version (or a later one) has gone out. */
+  whenShown(version: number): Promise<void> {
+    if (version <= this.shownVersion) return Promise.resolve();
+    return new Promise((resolve) =>
+      this.shownWaiters.push({ version, resolve }),
+    );
   }
 
   get strings(): StringNodeModel[] {

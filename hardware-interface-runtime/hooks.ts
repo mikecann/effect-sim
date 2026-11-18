@@ -105,11 +105,12 @@ export const useDisplayControl = (model: HWIRAppModel) => {
     model.setControl(control?.settings ?? null);
   }, [model, control]);
 
-  // Runs after the render that applied the new settings, so the confirmation
-  // means the LEDs really are showing them. The plug gets one try first; if
-  // that fails the LED side is confirmed anyway and the plug keeps retrying
-  // in the background (reported in the heartbeat), so the phone doesn't say
-  // the lights are offline because of the plug.
+  // Confirms once a frame with the new settings has gone out to the strings
+  // (black when off), so the confirmation means the LEDs really show them.
+  // The plug gets one try first; if that fails the LED side is confirmed
+  // anyway and the plug keeps retrying in the background (display/plug.ts,
+  // reported in the heartbeat), so the phone doesn't say the lights are
+  // offline because of the plug.
   const requestedAt = control?.requestedAt ?? null;
   const appliedRequestedAt = useRef<number | null>(null);
   useEffect(() => {
@@ -119,8 +120,10 @@ export const useDisplayControl = (model: HWIRAppModel) => {
     logger.info(
       `Remote: ${s.isOn ? "on" : "off"}, ${s.mode.kind} ${s.mode.id}, brightness ${s.brightness}`,
     );
+    const version = model.controlVersion;
     void (async () => {
       if (plug.switcher) await plug.switchTo(s.isOn);
+      await model.whenShown(version);
       try {
         await applied({ projectId, requestedAt });
       } catch (e) {
@@ -132,6 +135,15 @@ export const useDisplayControl = (model: HWIRAppModel) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per request: control changes on every status update, and confirming it twice would be wrong.
   }, [requestedAt]);
 
+  // On/off moved somewhere other than what the plug is being retried to (the
+  // phone again, or following Home Assistant): stop retrying the old one.
+  const isOn = control?.settings.isOn;
+  useEffect(() => {
+    const pending = plug.switcher?.pendingTarget ?? null;
+    if (isOn === undefined || pending === null || pending === isOn) return;
+    plug.switcher?.cancel();
+  }, [isOn, plug]);
+
   usePlugFollower(model, control, plug, appliedRequestedAt);
 };
 
@@ -140,17 +152,35 @@ const PLUG_SETTLE_MS = 30_000;
 
 type PlugHandle = ReturnType<typeof usePlugSwitcher>;
 
-/** The plug switcher (null without Home Assistant), and when HWIR last switched it. */
+/**
+ * The plug switcher (null without Home Assistant), and when HWIR last
+ * switched it. If Home Assistant switches the plug while HWIR is retrying,
+ * the display follows the plug (display.plugSwitched) instead of fighting it.
+ */
 const usePlugSwitcher = (model: HWIRAppModel) => {
+  const { projectId } = model.startupSettings;
+  const plugSwitched = useHwirMutation(api.display.plugSwitched);
   const [handle] = useState(() => {
     const switcher = plugConfigured
-      ? new PlugSwitcher(switchPlug, (status) => {
-          if (status.kind === "ok")
-            logger.info(`The lights' plug is ${status.on ? "on" : "off"}`);
-          else
-            logger.error(
-              `Couldn't switch the lights' plug ${status.on ? "on" : "off"} (try ${status.tries}): ${status.error}; retrying`,
+      ? new PlugSwitcher({
+          switchPlug,
+          readPlug,
+          onChange: (status) => {
+            if (status.kind === "ok")
+              logger.info(`The lights' plug is ${status.on ? "on" : "off"}`);
+            else
+              logger.error(
+                `Couldn't switch the lights' plug ${status.on ? "on" : "off"} (try ${status.tries}): ${status.error}; retrying`,
+              );
+          },
+          onExternal: (on) => {
+            logger.info(
+              `Home Assistant switched the lights' plug ${on ? "on" : "off"} while HWIR was retrying; following it`,
             );
+            plugSwitched({ projectId, isOn: on }).catch((e) =>
+              logger.error(`Error reporting the plug switch: ${e}`),
+            );
+          },
         })
       : null;
     const h = {
@@ -201,7 +231,7 @@ const usePlugFollower = (
       if (!c) return;
       const plugOn =
         plug.switcher && c.status === "live" && !plug.busy
-          ? await readPlug()
+          ? (await readPlug()).on
           : null;
       const action = followPlug({
         status: c.status,
