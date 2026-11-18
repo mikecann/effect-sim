@@ -11,6 +11,7 @@ import type { Segment } from "./types";
 import type { PathPoint } from "./types";
 import type { ProjectData } from "../../convex/functions";
 import { exhaustiveCheck } from "../misc";
+import { boundsOf, type Bounds } from "../geometry/stringLayout";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
 import {
   newKey,
@@ -84,8 +85,13 @@ export class ProjectModel {
     this.switchReporter = reporter;
   }
 
+  /** The nodes by key, so lookups inside reactions don't scan the list. */
+  get nodesByKey(): Map<NodeKey, AllNodeModels> {
+    return new Map(this.nodes.map((node) => [node.key, node]));
+  }
+
   findNode(key: NodeKey): AllNodeModels | null {
-    return this.nodes.find((node) => node.key === key) ?? null;
+    return this.nodesByKey.get(key) ?? null;
   }
 
   findNodes(keys: NodeKey[]): AllNodeModels[] {
@@ -102,6 +108,21 @@ export class ProjectModel {
 
   get strings(): StringNodeModel[] {
     return this.nodes.filter((node) => node instanceof StringNodeModel);
+  }
+
+  findString(key: NodeKey): StringNodeModel | null {
+    const node = this.findNode(key);
+    return node instanceof StringNodeModel ? node : null;
+  }
+
+  /** The box around every LED on the house, for spatial effects. */
+  get ledBounds(): Bounds {
+    return (
+      boundsOf(this.strings.flatMap((s) => s.layout.positions)) ?? {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 0, y: 0, z: 0 },
+      }
+    );
   }
 
   get stringDocs(): Array<NodeDocOfKind<"string">> {

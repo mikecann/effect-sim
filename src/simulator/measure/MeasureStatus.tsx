@@ -18,7 +18,7 @@ export default function MeasureStatus() {
           <ActionIcon
             variant="light"
             radius="xl"
-            onClick={() => appModel.setIsMeasureMode(false)}
+            onClick={() => appModel.sendTool({ kind: "SELECT" })}
           >
             ✕
           </ActionIcon>

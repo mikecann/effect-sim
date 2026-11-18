@@ -4,7 +4,7 @@ import { useSimulator } from "../SimulatorContext";
 export default function SideToolbar() {
   const appModel = useSimulator().app;
 
-  if (appModel.placingStringId) return null;
+  if (appModel.placingTool) return null;
 
   return (
     <Paper
@@ -36,7 +36,7 @@ export default function SideToolbar() {
             size="lg"
             variant={appModel.isMeasureMode ? "filled" : "light"}
             color={appModel.isMeasureMode ? "blue" : undefined}
-            onClick={() => appModel.setIsMeasureMode(!appModel.isMeasureMode)}
+            onClick={() => appModel.sendTool({ kind: "TOGGLE_MEASURE" })}
           >
             <span style={{ fontSize: 18, lineHeight: 1 }}>📏</span>
           </ActionIcon>

@@ -114,7 +114,7 @@ export const NodesTree = () => {
                   return;
                 }
 
-                const selectedNodes = model.app.seletedNodes;
+                const selectedNodes = model.app.selectedNodes;
                 if (selectedNodes.includes(node))
                   model.app.setSelectedEntity({
                     kind: "nodes",

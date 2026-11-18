@@ -20,16 +20,6 @@ export function GardenModel({
       // Ensure the garden model always renders behind LED strings
       ref.current.traverse((obj) => {
         obj.layers = layers;
-        //obj.renderOrder = -10;
-        // const mesh = obj as unknown as THREE.Mesh;
-        // if ((mesh as any)?.isMesh) {
-        //   const materials: Array<THREE.Material> = Array.isArray(mesh.material)
-        //     ? (mesh.material as Array<THREE.Material>)
-        //     : [mesh.material as THREE.Material];
-        //   for (const material of materials) {
-        //     if (material) material.depthWrite = false;
-        //   }
-        // }
       });
     }
     return () => {
@@ -42,7 +32,7 @@ export function GardenModel({
     <primitive
       ref={ref}
       onClick={() => {
-        if (appModel.placingStringId) return;
+        if (appModel.tool.kind !== "select") return;
         if (isDraggingRef?.current) return;
         appModel.clearSelection();
       }}

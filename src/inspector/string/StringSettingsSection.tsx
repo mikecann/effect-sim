@@ -172,12 +172,26 @@ export default function StringSettingsSection({
         />
       </Stack>
 
-      {appModel.placingStringId === node.key ? (
-        <Button color="red" onClick={() => appModel.cancelPlacingString()}>
+      {node.isMapped ? (
+        <Text size="xs" c="dimmed">
+          Its LEDs are where camera mapping found them, so its drawn path
+          isn't used.
+        </Text>
+      ) : null}
+
+      {appModel.placingStringKey === node.key ? (
+        <Button
+          color="red"
+          onClick={() => appModel.sendTool({ kind: "CANCEL_PLACING" })}
+        >
           Cancel
         </Button>
       ) : (
-        <Button onClick={() => appModel.startPlacingString(node.key)}>
+        <Button
+          onClick={() =>
+            appModel.sendTool({ kind: "START_PLACING", stringKey: node.key })
+          }
+        >
           Place String
         </Button>
       )}

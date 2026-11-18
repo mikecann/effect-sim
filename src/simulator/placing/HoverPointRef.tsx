@@ -3,19 +3,19 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { calculateRemainingDistance } from "./helpers";
-import type { NodeDoc } from "../../../shared/nodeTree";
-
-type StringNodeDoc = NodeDoc & { kind: "string" };
+import type { Point3 } from "../../../shared/geometry/stringLayout";
 
 export type HoverPointRefProps = {
   hoverPointRef: React.RefObject<THREE.Vector3 | null>;
-  string: StringNodeDoc;
-  pathPoints: Array<THREE.Vector3>;
+  ledCount: number;
+  spacingMeters: number;
+  pathPoints: ReadonlyArray<Point3>;
 };
 
 export function HoverPoint({
   hoverPointRef,
-  string,
+  ledCount,
+  spacingMeters,
   pathPoints,
 }: HoverPointRefProps) {
   const sphereRef = useRef<THREE.Mesh>(null);
@@ -40,13 +40,12 @@ export function HoverPoint({
       // Update label text imperatively
       const distance = calculateRemainingDistance(
         pathPoints,
-        string.ledCount,
-        string.spacingMeters,
+        ledCount,
+        spacingMeters,
         hoverPointRef.current,
       );
-      if (labelDivRef.current) 
+      if (labelDivRef.current)
         labelDivRef.current.textContent = `${distance.toFixed(2)} m remaining`;
-      
     } else {
       if (sphereRef.current) sphereRef.current.visible = false;
       if (labelGroupRef.current) labelGroupRef.current.visible = false;

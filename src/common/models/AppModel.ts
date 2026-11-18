@@ -7,7 +7,6 @@ import { exhaustiveCheck } from "../../../shared/misc";
 import { AllNodeModels } from "../../../shared/models/types";
 import { VirtualStringNodeModel } from "../../../shared/models/VirtualStringNodeModel";
 import { StringNodeModel } from "../../../shared/models/StringNodeModel";
-import { SimulatorUIModel } from "../../simulator/models/SimulatorUIModel";
 import type { SequenceModel } from "../../../shared/models/sequencer/SequenceModel";
 import type { TrackModel } from "../../../shared/models/sequencer/TrackModel";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
@@ -17,6 +16,14 @@ import { FlexLayoutModel } from "./FlexLayoutModel";
 import { makePersistable } from "mobx-persist-store";
 import { EditorTokenModel } from "../auth/EditorTokenModel";
 import type { ProjectSyncModel } from "./sync/ProjectSyncModel";
+import {
+  moveTool,
+  selectTool,
+  type EditorTool,
+  type PlacingTool,
+  type ToolEffect,
+  type ToolEvent,
+} from "./editorTool";
 
 export type SelectedEntity =
   | { kind: "node"; node: AllNodeModels }
@@ -33,8 +40,8 @@ export type SelectedEntity =
 
 export class AppModel {
   currentProjectId: Id<"projects"> | null = null;
-  isMeasureMode = false;
-  placingStringId: NodeKey | null = null;
+  /** What the simulator's pointer does (src/common/models/editorTool.ts). */
+  tool: EditorTool = selectTool;
   selectedEntity: SelectedEntity = null;
   gardenModel: THREE.Object3D | null = null;
   projects: ProjectModel[] = [];
@@ -50,6 +57,7 @@ export class AppModel {
     makeAutoObservable(this, {
       gardenModel: observableRef,
       sync: observableRef,
+      tool: observableRef,
     });
     makePersistable(this, {
       name: "AppModel",
@@ -105,7 +113,7 @@ export class AppModel {
     exhaustiveCheck(this.selectedEntity);
   }
 
-  get seletedNodes(): AllNodeModels[] {
+  get selectedNodes(): AllNodeModels[] {
     if (!this.selectedEntity) return [];
 
     if (this.selectedEntity.kind === "node") return [this.selectedEntity.node];
@@ -143,12 +151,46 @@ export class AppModel {
     this.currentProjectId = id;
   }
 
-  setIsMeasureMode(value: boolean) {
-    this.isMeasureMode = value;
+  /** Moves the tool on, and does whatever the move asks for. */
+  sendTool(event: ToolEvent) {
+    const { tool, effect } = moveTool(this.tool, event);
+    this.tool = tool;
+    if (effect) this.runToolEffect(effect);
   }
 
-  setPlacingStringId(id: NodeKey | null) {
-    this.placingStringId = id;
+  private runToolEffect(effect: ToolEffect) {
+    if (effect.kind === "savePath") {
+      this.project
+        ?.findString(effect.stringKey)
+        ?.setPathPoints(effect.points.map((position) => ({ position })));
+      return;
+    }
+    if (effect.kind === "setSegmentRange") {
+      const node = this.project?.findNode(effect.virtualStringKey);
+      if (!(node instanceof VirtualStringNodeModel)) return;
+      const segment = node.segmentModels[effect.segmentIndex];
+      segment?.update({
+        nodeId: effect.stringKey,
+        fromIndex: effect.fromIndex,
+        toIndex: effect.toIndex,
+        isReversed: effect.isReversed,
+      });
+      return;
+    }
+    exhaustiveCheck(effect);
+  }
+
+  get isMeasureMode(): boolean {
+    return this.tool.kind === "measure";
+  }
+
+  get placingTool(): PlacingTool | null {
+    return this.tool.kind === "placing" ? this.tool : null;
+  }
+
+  /** The string whose path is being drawn, if any. */
+  get placingStringKey(): NodeKey | null {
+    return this.placingTool?.stringKey ?? null;
   }
 
   setSelectedEntity(entity: SelectedEntity) {
@@ -159,15 +201,6 @@ export class AppModel {
     const index = this.projects.indexOf(project);
     if (index >= 0) this.projects.splice(index, 1);
     if (this.currentProjectId === project._id) this.currentProjectId = null;
-  }
-
-  startPlacingString(stringId: NodeKey) {
-    this.setPlacingStringId(stringId);
-    if (this.isMeasureMode) this.setIsMeasureMode(false);
-  }
-
-  cancelPlacingString() {
-    this.setPlacingStringId(null);
   }
 
   setGardenModel(obj: THREE.Object3D | null) {

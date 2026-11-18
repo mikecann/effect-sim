@@ -5,8 +5,7 @@ import * as THREE from "three";
 import { useSimulator } from "../SimulatorContext";
 
 export default function MeasureTool() {
-  const simulator = useSimulator();
-  const enabled = simulator.isMeasureMode;
+  const enabled = useSimulator().app.isMeasureMode;
   const { gl, camera, scene } = useThree();
   const [firstPoint, setFirstPoint] = useState<THREE.Vector3 | null>(null);
   const [secondPoint, setSecondPoint] = useState<THREE.Vector3 | null>(null);
