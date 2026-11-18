@@ -10,6 +10,7 @@ import { RouteProvider } from "./router.ts";
 import { ConfirmationProvider } from "./common/confirmation/ConfirmationProvider";
 import {
   createTheme,
+  InputWrapper,
   MantineProvider,
   v8CssVariablesResolver,
 } from "@mantine/core";
@@ -22,7 +23,11 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 // Mantine 9 changed some defaults; keep the editor looking as it did on 8.
 const theme = createTheme({
   defaultRadius: "sm",
-  fontWeights: { medium: "500" },
+  components: {
+    InputWrapper: InputWrapper.extend({
+      styles: { label: { fontWeight: 500 } },
+    }),
+  },
 });
 
 const rootElement = document.getElementById("root");
