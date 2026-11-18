@@ -20,3 +20,27 @@ export const runMode: RunMode = args.includes("--smoke")
     : "live";
 
 if (runMode !== "live") blockOutsideWorld(runMode);
+
+/**
+ * --local-convex-writes, only with --dry-run: Convex mutations go through
+ * (heartbeat, display confirmations, mapping acks) while UDP, WLED and Home
+ * Assistant stay blocked. Refused unless the backend is a local one, so a
+ * dry run can never write to a cloud deployment.
+ */
+export const convexWritesAllowed = (convexUrl: string): boolean => {
+  if (!args.includes("--local-convex-writes")) return false;
+  if (runMode !== "dry-run")
+    throw new Error("--local-convex-writes only works with --dry-run");
+  const host = new URL(convexUrl).hostname;
+  const local =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    /^(10|192\.168)\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (!local)
+    throw new Error(
+      `--local-convex-writes needs a local Convex backend, not ${convexUrl}`,
+    );
+  console.log(`dry-run: Convex mutations go to the local backend ${convexUrl}`);
+  return true;
+};

@@ -14,6 +14,10 @@ export const runSetupCLI = async (convexUrl: string) => {
     .option("-l, --playlist <id>", "Playlist ID (or 'null' for listen mode)")
     .option("--dry-run", "Run without sending UDP, mutations or Home Assistant")
     .option("--smoke", "Boot, run ~2 s of frames without side effects, exit")
+    .option(
+      "--local-convex-writes",
+      "With --dry-run and a local backend: let Convex mutations through",
+    )
     .parse(process.argv);
 
   const options = program.opts();

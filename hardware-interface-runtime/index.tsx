@@ -1,12 +1,11 @@
 import { render } from "react-nil";
 import { ConvexReactClient, ConvexProvider } from "convex/react";
 import { App } from "./App";
-import { polyfillRAF } from "./polyfill";
 import { runSetupCLI } from "./cli";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { ensure } from "../shared/ensure";
 import { logger } from "./utils/logger";
-import { runMode } from "./runMode";
+import { convexWritesAllowed, runMode } from "./runMode";
 import { reachOut } from "../shared/outsideWorld";
 import { getFunctionName } from "convex/server";
 
@@ -36,8 +35,6 @@ if (process.env.HWIR_SUPERVISED === "1") {
   }, 2000).unref();
 }
 
-polyfillRAF();
-
 const convexUrl = ensure(
   process.env.VITE_CONVEX_URL,
   `missing VITE_CONVEX_URL environment variable`,
@@ -47,14 +44,17 @@ const { projectId, playlistId } = await runSetupCLI(convexUrl);
 const convex = new ConvexReactClient(convexUrl);
 
 // Every write to Convex goes through the outside-world guard, so dry runs
-// read production data but never change it.
+// read production data but never change it. The one exception is a dry run
+// against a local backend with --local-convex-writes (runMode.ts), to test
+// the heartbeat and mapping acks without touching the lights.
 const mutation = convex.mutation.bind(convex);
-convex.mutation = ((ref, ...rest) =>
-  reachOut(
-    `calling mutation ${getFunctionName(ref)}`,
-    () => mutation(ref, ...rest),
-    Promise.resolve(null),
-  )) as typeof convex.mutation;
+if (!convexWritesAllowed(convexUrl))
+  convex.mutation = ((ref, ...rest) =>
+    reachOut(
+      `calling mutation ${getFunctionName(ref)}`,
+      () => mutation(ref, ...rest),
+      Promise.resolve(null),
+    )) as typeof convex.mutation;
 const action = convex.action.bind(convex);
 convex.action = ((ref, ...rest) =>
   reachOut(

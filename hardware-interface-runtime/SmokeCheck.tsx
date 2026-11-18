@@ -17,8 +17,12 @@ export const SmokeCheck = observer(({ app }: { app: HWIRAppModel }) => {
     if (!dataLoaded) return;
     frames.current++;
     if (frames.current < fps * SMOKE_SECONDS) return;
+    const playing = app.mappingSessionId
+      ? "mapping"
+      : `playlist '${app.playlist?.name ?? "none"}'`;
+    const mode = app.isPlaylistMode ? playing : "listen mode";
     logger.info(
-      `Smoke test passed: ${frames.current} frames, ${app.strings.length} strings, ${app.isPlaylistMode ? `playlist '${app.playlist?.name ?? "none"}'` : "listen mode"}`,
+      `Smoke test passed: ${frames.current} frames, ${app.strings.length} strings, ${mode}`,
     );
     process.exit(0);
   }, [dataLoaded]);

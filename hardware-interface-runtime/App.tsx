@@ -4,7 +4,7 @@ import { String } from "./String";
 import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
 import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
 import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
-import { FrameProvider } from "../src/common/FixedFrameProvider";
+import { HwirFrameProvider } from "./frames/HwirFrameProvider";
 import {
   useDisplayControl,
   useHeartbeat,
@@ -15,6 +15,7 @@ import { HWIRAppModel } from "./models/HWIRAppModel";
 import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
 import { runMode } from "./runMode";
 import { SmokeCheck } from "./SmokeCheck";
+import { MappingDisplay } from "./mapping/MappingDisplay";
 
 export const App = observer(({ app }: { app: HWIRAppModel }) => {
   useProjectModel(app);
@@ -25,34 +26,42 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
   if (!app.dataStore) return null;
   if (!app.project) return null;
 
-  const project = app.project;
-
-  const fps = project?.settings.defaultFramerate ?? DEFAULT_FRAMERATE;
+  const fps = app.project.settings.defaultFramerate ?? DEFAULT_FRAMERATE;
+  const mappingSessionId = app.mappingSessionId;
 
   return (
     <LedDataStoreContext.Provider value={app.dataStore}>
-      <FrameProvider fps={fps}>
+      <HwirFrameProvider fps={fps} meter={app.fpsMeter}>
         {runMode === "smoke" ? <SmokeCheck app={app} /> : null}
         {app.strings.map((string) => (
-          <String key={string.string.key} model={string} />
+          <String key={string.key} app={app} string={string} />
         ))}
 
         {app.isPlaylistMode ? (
-          <>
-            {/* Off: nothing plays, and the dispatcher sends black. The key
-                starts the player over when the remote changes mode. */}
-            {app.isOn && app.playlist ? (
-              <HeadlessPlaylistPlayer
-                key={app.modeKey}
-                playlist={app.playlist}
-              />
-            ) : null}
-            <HeadlessLedDataDispatcher app={app} />
-          </>
+          mappingSessionId ? (
+            // Camera mapping: the session's patterns instead of the playlist.
+            <MappingDisplay
+              key={mappingSessionId}
+              app={app}
+              sessionId={mappingSessionId}
+            />
+          ) : (
+            <>
+              {/* Off: nothing plays, and the dispatcher sends black. The key
+                  starts the player over when the remote changes mode. */}
+              {app.isOn && app.playlist ? (
+                <HeadlessPlaylistPlayer
+                  key={app.modeKey}
+                  playlist={app.playlist}
+                />
+              ) : null}
+              <HeadlessLedDataDispatcher app={app} />
+            </>
+          )
         ) : runMode === "smoke" ? null : (
           <ClientDataSocket app={app} />
         )}
-      </FrameProvider>
+      </HwirFrameProvider>
     </LedDataStoreContext.Provider>
   );
 });
