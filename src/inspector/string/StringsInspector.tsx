@@ -15,7 +15,7 @@ export function StringsInspector({ nodes }: StringsInspectorProps) {
         defaultValue="settings"
         variant="contained"
         styles={{
-          panel: { backgroundColor: "var(--color-tabset-background)" },
+          panel: { backgroundColor: "var(--fl-color-tabset-background)" },
           control: {
             paddingTop: 0,
             paddingBottom: 0,

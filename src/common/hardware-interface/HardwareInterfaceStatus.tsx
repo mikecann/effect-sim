@@ -1,6 +1,5 @@
 import { Tooltip, Indicator, ActionIcon, Box } from "@mantine/core";
 import { IconPlugConnected, IconPlugX } from "@tabler/icons-react";
-import { observer } from "mobx-react-lite";
 import { useApp } from "../AppContext";
 import { useState } from "react";
 import { HardwareInterfaceModal } from "./HardwareInterfaceModal";

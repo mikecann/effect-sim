@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable } from "mobx";
+import { makeAutoObservable, observableRef } from "mobx";
 import type * as THREE from "three";
 import { Doc, Id } from "../../../convex/_generated/dataModel";
 import { ProjectModel } from "../../../shared/models/ProjectModel";
@@ -42,7 +42,7 @@ export class AppModel {
     this.hardwareInterfaceRuntime = new HardwareInterfaceRuntimeModel(this);
     this.layout = new FlexLayoutModel(this);
     makeAutoObservable(this, {
-      gardenModel: observable.ref,
+      gardenModel: observableRef,
     });
     makePersistable(this, {
       name: "AppModel",

@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable } from "mobx";
+import { makeAutoObservable, observableRef } from "mobx";
 import type {
   IJsonModel,
   IJsonRowNode,
@@ -9,6 +9,7 @@ import { Model, Actions, DockLocation } from "flexlayout-react";
 import { defaultLayoutJson, TabComponentKinds } from "../tabs";
 import { AppModel } from "./AppModel";
 import { makePersistable } from "mobx-persist-store";
+import { ensureNotUndefined } from "../../../shared/ensure";
 
 export const INSPECTOR_TAB_ID = "tab-inspector";
 export const STRINGS_TAB_ID = "tab-strings";
@@ -22,7 +23,7 @@ export class FlexLayoutModel {
   constructor(app: AppModel) {
     this.model = Model.fromJson(defaultLayoutJson);
     makeAutoObservable(this, {
-      model: observable.ref,
+      model: observableRef,
     });
     makePersistable(this, {
       name: "FlexLayoutModel",
@@ -119,7 +120,10 @@ export class FlexLayoutModel {
           component: "sequencer",
           enableClose: true,
         },
-        this.model.getRoot().getId(),
+        ensureNotUndefined(
+          this.model.getRootRow(),
+          "flexlayout model has no root row",
+        ).getId(),
         DockLocation.BOTTOM,
         1,
       ),

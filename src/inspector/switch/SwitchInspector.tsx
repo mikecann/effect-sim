@@ -13,7 +13,7 @@ export const SwitchInspector = ({ node }: { node: SwitchNodeModel }) => {
       variant="contained"
       styles={{
         panel: {
-          backgroundColor: "var(--color-tabset-background)",
+          backgroundColor: "var(--fl-color-tabset-background)",
         },
         control: {
           paddingTop: 0,

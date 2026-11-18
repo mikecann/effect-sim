@@ -8,7 +8,6 @@ import {
   Badge,
   Switch,
 } from "@mantine/core";
-import { observer } from "mobx-react-lite";
 import { useApp } from "../AppContext";
 
 interface HardwareInterfaceModalProps {

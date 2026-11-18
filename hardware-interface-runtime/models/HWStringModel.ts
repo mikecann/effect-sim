@@ -1,4 +1,4 @@
-import { makeAutoObservable, observable } from "mobx";
+import { makeAutoObservable, observableRef } from "mobx";
 import { StringNodeModel } from "../../shared/models/StringNodeModel";
 import { HWIRAppModel } from "./HWIRAppModel";
 import { Signal } from "../../shared/Signal";
@@ -11,7 +11,7 @@ export class HWStringModel {
     public readonly string: StringNodeModel,
   ) {
     makeAutoObservable(this, {
-      onData: observable.ref,
+      onData: observableRef,
     });
   }
 }

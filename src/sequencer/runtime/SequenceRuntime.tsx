@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react-observer";
 import { StringEffectsRenderer } from "./StringEffectsRenderer";
 import { SwitchEffectsRenderer } from "./SwitchEffectsRenderer";
 import { SequenceRuntimeModel } from "./SequenceRuntimeModel";

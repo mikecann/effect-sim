@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { Signal } from "../../shared/Signal";
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react-observer";
 
 export type FrameContextValue = {
   signal: Signal;

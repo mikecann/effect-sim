@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useApp } from "../../common/AppContext";
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react-observer";
 
 export const StringSegmentRangeInstantIndicator = observer(() => {
   const appModel = useApp();

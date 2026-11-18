@@ -1,15 +1,7 @@
-/* FlexLayout visual overrides */
-.flexlayout__tabset-selected {
-  background-image: none !important;
-  background-color: var(--color-tabset-background-selected) !important;
+/* FlexLayout theme tweaks (flexlayout-react reads --flexlayout-* overrides) */
+.flexlayout__layout {
+  --flexlayout-splitter-size: 6px;
+  --flexlayout-splitter-active-size: 6px;
+  --flexlayout-font-family: Roboto, Arial, sans-serif;
+  --flexlayout-color-tabset-background-maximized: var(--fl-color-6);
 }
-
-.flexlayout__tabset-maximized {
-  background-image: none !important;
-  background-color: var(--color-tabset-background-maximized) !important;
-}
-
-.flexlayout__tabset_header {
-  box-shadow: none !important;
-}
-
