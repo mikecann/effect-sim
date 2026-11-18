@@ -11,6 +11,7 @@ import {
   readdirSync,
   renameSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -196,6 +197,53 @@ export class FfmpegCamera implements Camera {
   async close() {
     this.proc?.kill("SIGINT");
   }
+}
+
+/**
+ * A phone running the page from phonecam/server.ts in Safari, on any lens
+ * (the ultra-wide fits the whole garden in). The server must be running and
+ * the phone's page connected. Exposure lock depends on what Safari allows.
+ */
+export class PhoneCamera implements Camera {
+  readonly kind = "phone";
+
+  constructor(private readonly server: string) {}
+
+  private async call(path: string) {
+    const res = await fetch(`${this.server}/${path}`);
+    const body = (await res.json()) as Record<string, unknown>;
+    if (!res.ok || body.ok === false)
+      throw new Error(`Phone camera: ${String(body.error ?? res.status)}`);
+    return body;
+  }
+
+  async open() {
+    const status = await this.call("status");
+    if (!status.connected)
+      throw new Error(
+        "Phone camera: no phone connected. Open the phonecam page on the phone and tap Start camera.",
+      );
+    return { lens: status.lens, width: status.width, height: status.height };
+  }
+
+  lock() {
+    return this.call("lock");
+  }
+
+  auto() {
+    return this.call("auto");
+  }
+
+  async snap(path: string, _frame: FrameRequest, settleMs: number) {
+    const res = await fetch(
+      `${this.server}/snap?settle=${Math.round(settleMs)}`,
+    );
+    if (!res.ok)
+      throw new Error(`Phone camera: ${await res.text()}`);
+    writeFileSync(path, new Uint8Array(await res.arrayBuffer()));
+  }
+
+  async close() {}
 }
 
 const imageExts = new Set([".jpg", ".jpeg", ".heic", ".png"]);

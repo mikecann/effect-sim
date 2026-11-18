@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Lights camera</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd;
+    font: 15px -apple-system, system-ui, sans-serif; overflow: hidden; }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    background: linear-gradient(transparent, rgba(0,0,0,.75) 40%); }
+  button { font: inherit; color: #eee; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 999px; padding: 7px 12px; }
+  button.on { background: #eee; color: #000; }
+  button:disabled { opacity: .5; }
+  #status { margin-left: auto; font-size: 13px; color: #aaa; }
+  #start { position: fixed; inset: 0; margin: auto; width: 220px; height: 56px; font-size: 18px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c33; margin-right: 6px; }
+  .dot.ok { background: #3a3; }
+</style>
+</head>
+<body>
+<video id="v" playsinline muted autoplay></video>
+<button id="start">Start camera</button>
+<div id="bar" hidden>
+  <span id="lenses"></span>
+  <span id="status"><span class="dot" id="dot"></span><span id="text">Connecting…</span></span>
+</div>
+<script>
+const v = document.getElementById("v");
+const lensesEl = document.getElementById("lenses");
+const bar = document.getElementById("bar");
+const dot = document.getElementById("dot");
+const text = document.getElementById("text");
+let stream, track, ws, lensId, wakeLock;
+
+const base = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
+
+async function openLens(deviceId) {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { deviceId: { exact: deviceId }, width: { ideal: 4032 }, height: { ideal: 3024 }, frameRate: { ideal: 30 } },
+  });
+  track = stream.getVideoTracks()[0];
+  lensId = deviceId;
+  v.srcObject = stream;
+  await v.play();
+  await new Promise((r) => (v.videoWidth ? r() : v.addEventListener("loadedmetadata", r, { once: true })));
+  [...lensesEl.children].forEach((b) => b.classList.toggle("on", b.dataset.id === deviceId));
+  sendInfo();
+}
+
+function sendInfo() {
+  const caps = track?.getCapabilities ? track.getCapabilities() : {};
+  const info = {
+    type: "info",
+    lens: track?.label,
+    width: v.videoWidth,
+    height: v.videoHeight,
+    settings: track?.getSettings ? track.getSettings() : {},
+    capabilities: caps,
+  };
+  if (ws?.readyState === 1) ws.send(JSON.stringify(info));
+  showStatus();
+}
+
+function showStatus() {
+  const ok = ws?.readyState === 1;
+  dot.classList.toggle("ok", ok);
+  text.textContent = `${ok ? "Mac connected" : "Mac not connected"} · ${v.videoWidth}×${v.videoHeight}`;
+}
+
+function nextFrame() {
+  return new Promise((r) =>
+    v.requestVideoFrameCallback ? v.requestVideoFrameCallback(() => r()) : setTimeout(r, 50),
+  );
+}
+
+async function snap(id) {
+  try {
+    // Two fresh frames, so the photo is from after the request.
+    await nextFrame();
+    await nextFrame();
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    c.getContext("2d").drawImage(v, 0, 0);
+    const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.95));
+    await fetch(`${base}upload?id=${id}`, { method: "POST", body: blob });
+  } catch (e) {
+    ws.send(JSON.stringify({ type: "snapError", id, error: String(e) }));
+  }
+}
+
+async function setMode(id, mode) {
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const want = {};
+  for (const k of ["exposureMode", "focusMode", "whiteBalanceMode"])
+    if (caps[k]?.includes(mode)) want[k] = mode;
+  let result = {};
+  try {
+    if (Object.keys(want).length) await track.applyConstraints({ advanced: [want] });
+    const s = track.getSettings();
+    result = {
+      exposure: want.exposureMode ? s.exposureMode : "unsupported",
+      focus: want.focusMode ? s.focusMode : "unsupported",
+      whiteBalance: want.whiteBalanceMode ? s.whiteBalanceMode : "unsupported",
+    };
+  } catch (e) {
+    result = { error: String(e) };
+  }
+  ws.send(JSON.stringify({ type: "result", id, ok: true, ...result }));
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}${base}ws`);
+  ws.onopen = () => sendInfo();
+  ws.onclose = () => { showStatus(); setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "snap") snap(msg.id);
+    else if (msg.type === "lock") setMode(msg.id, "manual");
+    else if (msg.type === "auto") setMode(msg.id, "continuous");
+  };
+}
+
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") keepAwake();
+});
+
+document.getElementById("start").onclick = async (e) => {
+  e.target.disabled = true;
+  e.target.textContent = "Starting…";
+  try {
+    // Ask once so the lens names are readable, then list the back lenses.
+    const first = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    first.getTracks().forEach((t) => t.stop());
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    const back = cams.filter((d) => !/front/i.test(d.label));
+    for (const d of back.length ? back : cams) {
+      const b = document.createElement("button");
+      b.dataset.id = d.deviceId;
+      b.textContent = d.label.replace(/^Back /, "").replace(/ Camera$/, "") || "Camera";
+      b.onclick = async () => {
+        b.disabled = true;
+        try { await openLens(d.deviceId); } finally { b.disabled = false; }
+      };
+      lensesEl.appendChild(b);
+    }
+    const ultra = cams.find((d) => /ultra wide/i.test(d.label) && !/dual|triple/i.test(d.label));
+    await openLens((ultra || back[0] || cams[0]).deviceId);
+    e.target.remove();
+    bar.hidden = false;
+    keepAwake();
+    connect();
+  } catch (err) {
+    e.target.disabled = false;
+    e.target.textContent = "Start camera";
+    alert(String(err));
+  }
+};
+</script>
+</body>
+</html>

@@ -426,13 +426,20 @@ def draw_debug(photo_path: str, result: dict, out_path: str, highlight: list[dic
 
 def check_change(prev: str, cur: str) -> dict:
     """How much of the lit area changed between two frames. A frame taken
-    before the lights moved on to the next pattern changes almost nothing."""
+    before the lights moved on to the next pattern changes almost nothing.
+    Real scenes (sky, lit windows, other lights) aren't a flat dark
+    background, so the noise comes from the difference between the frames
+    and "lit" means a local (top-hat) highlight, not brighter than the
+    median."""
     a, b = read_gray(prev, 0.25), read_gray(cur, 0.25)
     if a.shape != b.shape:
         return {"changed": 1.0, "note": "frame size changed"}
-    noise = max(noise_sigma(a), noise_sigma(b), 1.0)
+    noise = max(noise_sigma(a - b), 1.0)
     threshold = max(MIN_SIGNAL * 2, NOISE_SIGMAS * noise)
-    bright = (a > threshold + np.median(a)) | (b > threshold + np.median(b))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+    bright = (cv2.morphologyEx(a, cv2.MORPH_TOPHAT, kernel) > threshold) | (
+        cv2.morphologyEx(b, cv2.MORPH_TOPHAT, kernel) > threshold
+    )
     if bright.sum() < 4:
         return {"changed": 0.0, "lit": int(bright.sum())}
     changed = (np.abs(a - b) > threshold) & bright

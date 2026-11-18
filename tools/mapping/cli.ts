@@ -18,6 +18,7 @@ import {
   FfmpegCamera,
   listCameras,
   ManualCamera,
+  PhoneCamera,
   SnapCamera,
   type Camera,
 } from "./lib/cameras";
@@ -132,6 +133,8 @@ const makeCamera = (
   const arg = rest.join(":");
   if (kind === "snap") return new SnapCamera(arg || "0");
   if (kind === "ffmpeg") return new FfmpegCamera(arg || "0");
+  if (kind === "phone")
+    return new PhoneCamera(arg || "http://127.0.0.1:18731");
   if (kind === "manual")
     return new ManualCamera(
       resolve(arg || join(process.env.HOME ?? ".", "Downloads")),
@@ -147,7 +150,7 @@ const makeCamera = (
     );
   }
   throw new Error(
-    `Unknown camera "${spec}": snap:<index|name>, ffmpeg:<index>, manual[:<folder>] or synthetic:<scene.json>.`,
+    `Unknown camera "${spec}": snap:<index|name>, ffmpeg:<index>, phone[:<server url>], manual[:<folder>] or synthetic:<scene.json>.`,
   );
 };
 
