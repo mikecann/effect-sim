@@ -13,6 +13,7 @@ import type { ProjectData } from "../../../../convex/functions";
 import type { ProjectModel } from "../../../../shared/models/ProjectModel";
 import { toEditorDoc, type EditorTable } from "../../../../shared/models/docs";
 import { stableStringify } from "../../../../shared/stableStringify";
+import { LIMITS } from "../../../../convex/editorSync";
 
 export type SyncChange = FunctionArgs<
   typeof api.editor.sync
@@ -25,6 +26,9 @@ export type SaveStatus =
   | { kind: "saved" }
   | { kind: "saving" }
   | { kind: "error"; message: string; retryAt: number | null };
+
+/** A batch stays well under Convex's argument and write limits. */
+export const MAX_BATCH_BYTES = 4_000_000;
 
 /** How long after the last edit a batch goes out. */
 export const SYNC_DEBOUNCE_MS = 500;
@@ -73,6 +77,11 @@ export class ProjectSyncModel {
   private inFlight: Map<string, string | null> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
+  /** Every row this syncer has seen on the server. A row seen there but no
+   * longer in `base` was deleted elsewhere, so it's never sent as a create. */
+  private seen = new Set<string>();
+  /** Closed for this project: only the last edits still go out. */
+  private closed = false;
   private disposeReaction: (() => void) | null = null;
 
   constructor(
@@ -87,18 +96,37 @@ export class ProjectSyncModel {
     });
   }
 
-  /** Starts watching the models for edits. */
+  /**
+   * Starts watching the models for edits. The project's rows are dropped
+   * first and come back from the server: rows kept from an earlier visit have
+   * no base, and the server may have moved on since.
+   */
   start() {
+    this.closed = false;
+    this.base.clear();
+    this.seen.clear();
+    this.baseProject = null;
+    this.serverConfirmed = false;
+    this.inFlight = null;
+    this.setStatus({ kind: "loading" });
+    runInAction(() => this.project.clearRows());
     this.disposeReaction = reaction(
       () => this.snapshotKey(),
       () => this.schedule(SYNC_DEBOUNCE_MS),
     );
   }
 
-  dispose() {
+  /**
+   * Stops watching, and sends any unsaved edits straight away (a batch
+   * already out finishes, then the rest go). Called when the project closes.
+   */
+  close() {
     this.disposeReaction?.();
+    this.disposeReaction = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.closed = true;
+    if (this.serverConfirmed) void this.sendBatch();
   }
 
   /** Whether some edit hasn't reached the server yet. */
@@ -180,7 +208,10 @@ export class ProjectSyncModel {
     const changes: SyncChange[] = [];
     const local = this.localRows();
     for (const [id, row] of local)
-      if (this.base.get(id) !== row.json)
+      if (
+        this.base.get(id) !== row.json &&
+        (this.base.has(id) || !this.seen.has(id))
+      )
         changes.push({
           table: row.table,
           op: this.base.has(id) ? "update" : "create",
@@ -205,7 +236,7 @@ export class ProjectSyncModel {
   }
 
   private schedule(ms: number) {
-    if (!this.serverConfirmed) return;
+    if (!this.serverConfirmed || this.closed) return;
     if (this.timer) clearTimeout(this.timer);
     if (this.computeChanges().length && this.status.kind !== "error")
       this.setStatus({ kind: "saving" });
@@ -218,7 +249,7 @@ export class ProjectSyncModel {
   private async sendBatch() {
     // Never two in flight: this one's answer schedules the next.
     if (this.inFlight) return;
-    const changes = this.computeChanges();
+    const changes = this.takeBatch();
     if (changes.length === 0) {
       if (this.status.kind !== "error") this.setStatus({ kind: "saved" });
       return;
@@ -241,6 +272,7 @@ export class ProjectSyncModel {
     } catch (error) {
       runInAction(() => {
         this.inFlight = null;
+        if (this.closed) return;
         const delay =
           RETRY_DELAYS_MS[
             Math.min(this.failures, RETRY_DELAYS_MS.length - 1)
@@ -256,13 +288,54 @@ export class ProjectSyncModel {
       return;
     }
     this.failures = 0;
+    if (this.closed) {
+      if (this.computeChanges().length) void this.sendBatch();
+      return;
+    }
     if (this.computeChanges().length) this.schedule(SYNC_DEBOUNCE_MS);
     else this.setStatus({ kind: "saved" });
+  }
+
+  /**
+   * The next batch: changes up to MAX_BATCH_BYTES. A row too big for Convex
+   * to store is never sent (it would fail every batch it's in): it goes back
+   * to the server's version, and the editor says why.
+   */
+  private takeBatch(): SyncChange[] {
+    const batch: SyncChange[] = [];
+    const tooBig: SyncResult["rejected"] = [];
+    let bytes = 0;
+    for (const change of this.computeChanges()) {
+      const size = "doc" in change ? JSON.stringify(change.doc).length : 100;
+      if (
+        size > LIMITS.rowBytes &&
+        change.table !== "projects" &&
+        change.op !== "delete"
+      ) {
+        this.revert(
+          rowId(change.table, change.key),
+          stableStringify(change.doc),
+        );
+        tooBig.push({
+          table: change.table,
+          key: change.key,
+          reason: `It's ${Math.round(size / 1000)} KB; a row can be at most ${LIMITS.rowBytes / 1000} KB.`,
+        });
+        continue;
+      }
+      if (batch.length > 0 && bytes + size > MAX_BATCH_BYTES) break;
+      batch.push(change);
+      bytes += size;
+    }
+    if (tooBig.length) this.lastProblems = tooBig;
+    return batch;
   }
 
   /** A batch's answer: the sent rows are now the base, and refused ones go back to the server's. */
   private settle(sent: Map<string, string | null>, result: SyncResult) {
     this.inFlight = null;
+    // A closed project's rows are reloaded when it opens again.
+    if (this.closed) return;
     const refused = new Set(
       [...result.skipped, ...result.rejected].map((r) =>
         rowId(r.table as EditorTable, r.key),
@@ -278,7 +351,10 @@ export class ProjectSyncModel {
         continue;
       }
       if (json === null) this.base.delete(id);
-      else this.base.set(id, json);
+      else {
+        this.base.set(id, json);
+        this.seen.add(id);
+      }
     }
     this.lastProblems = [...result.skipped, ...result.rejected];
     // The server may have repaired rows we sent (a trimmed segment, a moved
@@ -286,14 +362,18 @@ export class ProjectSyncModel {
     this.mergeServer();
   }
 
-  /** Puts a row back as the server has it, unless it was edited again since. */
+  /**
+   * Puts a row back as the server has it, unless it was edited again since.
+   * A row the server doesn't have was deleted elsewhere: it goes, edits or
+   * not, as sending it again would bring it back.
+   */
   private revert(id: string, sentJson: string | null) {
     const local = this.localRows().get(id);
     const editedSince = (local?.json ?? null) !== sentJson;
     const serverRow = this.serverRows().get(id);
     if (serverRow) this.base.set(id, serverRow.json);
     else this.base.delete(id);
-    if (!editedSince) this.adopt(id, serverRow);
+    if (!editedSince || !serverRow) this.adopt(id, serverRow);
   }
 
   private serverRows(): Map<string, Row & { full: object }> {
@@ -333,10 +413,22 @@ export class ProjectSyncModel {
       if (this.inFlight?.has(id)) continue;
       const base = this.base.get(id);
       const localJson = local.get(id)?.json;
-      if (localJson !== base) continue; // unsaved edits win
       const serverRow = server.get(id);
-      if (serverRow) this.base.set(id, serverRow.json);
-      else this.base.delete(id);
+      // Seen on the server, then deleted there: it goes, unsaved edits or not.
+      if (
+        base === undefined &&
+        localJson !== undefined &&
+        this.seen.has(id) &&
+        !serverRow
+      ) {
+        this.adopt(id, undefined);
+        continue;
+      }
+      if (localJson !== base) continue; // unsaved edits win
+      if (serverRow) {
+        this.base.set(id, serverRow.json);
+        this.seen.add(id);
+      } else this.base.delete(id);
       if (localJson !== serverRow?.json) this.adopt(id, serverRow);
     }
 

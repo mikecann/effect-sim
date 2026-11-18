@@ -4,7 +4,10 @@ import { StringPropEditor } from "./StringPropEditor";
 import { BooleanPropEditor } from "./BooleanPropEditor";
 import { RangePropEditor } from "./RangePropEditor";
 import type { z } from "zod";
-import { inspectableProps } from "../../../../shared/effects/inspectableProps";
+import {
+  inspectableKind,
+  numberBounds,
+} from "../../../../shared/effects/inspectableProps";
 
 type PropEditorProps = {
   propName: string;
@@ -29,8 +32,9 @@ export function PropEditor({
 
   const label = formatLabel(propName);
 
-  // Exhaustive switch over all possible inspectable prop types
-  if (propType === inspectableProps.color)
+  const kind = inspectableKind(propType);
+
+  if (kind === "color")
     return (
       <ColorPropEditor
         label={label}
@@ -39,16 +43,17 @@ export function PropEditor({
       />
     );
 
-  if (propType === inspectableProps.number)
+  if (kind === "number")
     return (
       <NumberPropEditor
         label={label}
+        {...numberBounds(propType)}
         value={value as number | undefined}
         onChange={onChange as (value: number) => void}
       />
     );
 
-  if (propType === inspectableProps.string)
+  if (kind === "string")
     return (
       <StringPropEditor
         label={label}
@@ -57,7 +62,7 @@ export function PropEditor({
       />
     );
 
-  if (propType === inspectableProps.boolean)
+  if (kind === "boolean")
     return (
       <BooleanPropEditor
         label={label}
@@ -66,7 +71,7 @@ export function PropEditor({
       />
     );
 
-  if (propType === inspectableProps.range)
+  if (kind === "range")
     return (
       <RangePropEditor
         label={label}

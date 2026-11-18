@@ -73,6 +73,13 @@ export class ProjectModel {
     exposeDocFields(this);
   }
 
+  /** Drops every node, sequence and playlist (the editor reloads them on open). */
+  clearRows() {
+    this.nodes = [];
+    this.sequences = [];
+    this.playlists = [];
+  }
+
   setSwitchReporter(reporter: SwitchReporter | null) {
     this.switchReporter = reporter;
   }

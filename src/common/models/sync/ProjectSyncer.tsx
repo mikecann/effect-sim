@@ -42,8 +42,7 @@ export const ProjectSyncer = ({
     model.start();
     app.setSync(model);
     return () => {
-      model.flush();
-      model.dispose();
+      model.close();
       app.setSync(null);
     };
   }, [app, model]);
