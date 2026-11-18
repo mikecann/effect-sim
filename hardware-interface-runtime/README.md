@@ -1,36 +1,48 @@
 # Hardware Interface Runtime
 
-This part interfaces with the hardware and can optionally play playlists directly without driving the UI.
+HWIR drives the real lights: it plays the display's playlist (or sequence) on the WLED strings over DDP, follows the phone remote and Home Assistant's plug, shows camera mapping patterns, and reports how it's doing to Convex.
 
 ## Running
 
 ```bash
-bun run hwir
-```
-
-The CLI will prompt you to select a project and playlist each time you start.
-
-### CLI Options
-
-```bash
-# Normal startup (always prompts)
+# Prompts for a project and playlist
 bun run hwir
 
-# Specify project/playlist directly (skips prompts)
+# Skips the prompts. A playlist of 'null' is listen mode (below)
 bun run hwir -p <projectId> -l <playlistId>
 
 # Everything runs, but shared/outsideWorld.ts blocks UDP, WLED and smart plug
-# calls, Convex mutations and Home Assistant: safe beside the live runtime
+# calls, Convex mutations and Home Assistant: safe beside the live runtime.
+# With no network every string goes connecting -> offline.
 bun run hwir -p <projectId> -l <playlistId> --dry-run
+
+# A dry run that lets Convex mutations through to a local backend only
+# (refused for a cloud URL): for testing the heartbeat, confirmations and
+# mapping acks without touching the lights
+bun run hwir -p <projectId> -l <playlistId> --dry-run --local-convex-writes
 
 # Boot, load the project, run ~2 s of frames with no side effects, exit 0
 # (non-zero on any error, or after HWIR_SMOKE_TIMEOUT_MS, default 60 s)
 bun hardware-interface-runtime/index.tsx -p <projectId> -l <playlistId> --smoke
 ```
 
-## Token and heartbeat
+## How it works
 
-Every Convex mutation HWIR sends carries `HWIR_TOKEN`, read from `.env.local` (the same value as the deployment's `HWIR_TOKEN` env var, see `convex/roles.ts`). Without it, mutations work only until the deployment sets `REQUIRE_TOKENS=true`. Every 10 s HWIR sends a heartbeat (`hwir:heartbeat`: commit, frame rate, each string's connection), which keeps the `hwirPresence` machine online. `--dry-run` and `--smoke` send none of these.
+- `index.tsx` parses the flags (`cli.ts`, `runMode.ts`), wraps the Convex client so every mutation goes through the outside-world guard, and renders `App.tsx` with react-nil.
+- **Frames** (`frames/`): `HwirFrameProvider` runs frames on the project's frame interval (`defaultFramerate`, 40 fps by default), with `FrameClock` catching up at most 2 frames after a stall and dropping the rest. `FpsMeter` measures the rate really achieved, which the heartbeat reports.
+- **Strings** (`strings/`): `String.tsx` keeps one `StringLink` per string, remade only when its address changes. Each link's connection is an explicit state (`strings/connection.ts`, all moves in `stepConnection`): `connecting` (probing every 2 s) goes `live` on a good `/json/info` probe, or `offline` after 3 failed ones; `live` (probed every 10 s) goes `degraded` on a DDP send error or failed probe; `degraded` (every 2 s) goes back to `live` on a good probe, or `offline` after 3 failures; `offline` probes at 5 s backing off to a minute, and goes straight to `live` when the board answers. Frames go only to `live` and `degraded` strings. Whenever a string becomes live (and when its board's uptime shows it restarted), the link puts WLED's on-state and the string's brightness back. Each change of state is one log line, never one per frame or per retry.
+- **DDP** (`strings/ddp.ts`): frames over 480 LEDs go out in 1440-byte chunks with their byte offsets, PUSH only on the last, in buffers reused frame to frame. A frame is dropped for a string whose last one is still going out.
+- **Playback**: `HeadlessPlaylistPlayer` plays the display's mode with `HeadlessPlayerModel`, which reads the playlist's sequences fresh each frame, so edits in the editor (sequences added, removed, reordered, a first sequence in an empty playlist) take effect without a mode change. `HeadlessLedDataDispatcher` sends each frame, scaled by the display's brightness (black when off; WLED goes back to its own effect a few seconds after DDP stops). A string's own brightness is WLED's `bri`.
+- **Mapping mode** (`mapping/`): when the display's mode is `mapping` (convex/displayControl.ts), `MappingDisplay` follows the session's `request` (`{seq, pattern}`, convex/mapping.ts `get`) and lights it in full white at the display's brightness, with the LED codes from `shared/mapping/ledCodes.ts` (every `string` node, in key order). Once a frame with that seq has gone out over UDP to every live string, it acks `mapping.shown`. Strings that aren't live don't hold the ack up (a live one whose sends fail stops holding it after 10 frames); HWIR logs which strings missed each pattern. `mapping.shown` takes only the seq, so the camera tool learns which strings are offline from `hwir:presence`, not from the ack.
+- **Listen mode** (no playlist): `ClientDataSocket` takes frames from the editor on the same Mac (`ws://127.0.0.1:8787`, `BUN_WS_PORT`) and forwards them to the strings. It listens on localhost only, refuses pages from other origins, and requires `?token=` when `HWIR_WS_TOKEN` is set.
+
+## Token, heartbeat and the remote
+
+Every Convex mutation HWIR sends carries `HWIR_TOKEN`, read from `.env.local` (the same value as the deployment's `HWIR_TOKEN` env var, see `convex/roles.ts`). Without it, mutations work only until the deployment sets `REQUIRE_TOKENS=true`.
+
+Every 10 s HWIR sends a heartbeat (`hwir:heartbeat`), which keeps the `hwirPresence` machine online and carries the commit, the measured frame rate, each string's connection state and when it last answered a probe, and the plug's state. `--dry-run` and `--smoke` send none of these (unless `--local-convex-writes`).
+
+`hooks.ts` follows the phone remote (`display.get`) and confirms each change with `display.applied` once it's showing. With Home Assistant set up (`HA_URL`, `HA_TOKEN`, `HA_PLUG_ENTITY` in `.env.local`) the plug is switched first, but a failure doesn't hold the confirmation up: `display/plug.ts` retries it with backoff (2 s up to a minute) until it works or a newer change replaces it, and the heartbeat's `plug` says it's failing. Every 10 s, in every display state, a check (`followPlug`) re-sends a confirmation that was lost while the display is still `applying` or `unreachable`, and when it's `live` and Home Assistant switched the plug (sunset on, 10pm off) moves on/off to match.
 
 ## Supervisor and updates
 
