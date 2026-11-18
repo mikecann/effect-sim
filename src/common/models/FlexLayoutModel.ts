@@ -73,7 +73,6 @@ export class FlexLayoutModel {
   setModel(nextModel: Model) {
     this.model = nextModel;
     const json = this.model.toJson();
-    console.log("FlexLayoutModel changed", json);
     this.modelJson = json;
   }
 

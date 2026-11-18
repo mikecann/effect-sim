@@ -1,0 +1,7 @@
+// Build settings for the app and the widget. The phone remote's token
+// (REMOTE_TOKEN on the Convex deployment, convex/roles.ts) comes from
+// Secrets.xcconfig, which git ignores: copy Secrets.example.xcconfig to
+// Secrets.xcconfig and paste the token in. It reaches the code through each
+// target's Info.plist (LightsRemoteToken) and Config.remoteToken.
+LIGHTS_REMOTE_TOKEN =
+#include? "Secrets.xcconfig"

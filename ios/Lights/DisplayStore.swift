@@ -192,6 +192,7 @@ final class ConvexBackend: Backend {
         if let mode {
             args["mode"] = ["kind": mode.kind.rawValue, "id": mode.id] as [String: ConvexEncodable?]
         }
+        if let token = Config.remoteToken { args["token"] = token }
         let outcome: RequestOutcome = try await client.mutation("display:request", with: args)
         try outcome.check()
     }
