@@ -12,6 +12,7 @@ import {
 import {
   findRowProblem,
   findSegmentRangeProblem,
+  normalizeRow,
   LIMITS,
   hasParentCycle,
   repairReferences,
@@ -229,7 +230,10 @@ export const sync = editorMutation({
           key: _k,
           ...fields
         } = stored;
-        if (stableStringify(fields) === stableStringify(change.doc))
+        if (
+          stableStringify(fields) ===
+          stableStringify(normalizeRow(change.table, change.doc))
+        )
           result.applied++;
         else
           result.skipped.push({
@@ -252,7 +256,7 @@ export const sync = editorMutation({
       remember(change.table, change.key);
       if (change.table === "nodes")
         formerParents.set(change.key, change.doc.parentId);
-      table.set(change.key, change.doc);
+      table.set(change.key, normalizeRow(change.table, change.doc));
       result.applied++;
     }
 

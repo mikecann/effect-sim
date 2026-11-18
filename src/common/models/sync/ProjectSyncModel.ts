@@ -82,6 +82,8 @@ export class ProjectSyncModel {
   private seen = new Set<string>();
   /** Closed for this project: only the last edits still go out. */
   private closed = false;
+  /** A closed project's last edits, still to send. */
+  private outbox: SyncChange[] = [];
   private disposeReaction: (() => void) | null = null;
 
   constructor(
@@ -103,6 +105,7 @@ export class ProjectSyncModel {
    */
   start() {
     this.closed = false;
+    this.outbox = [];
     this.base.clear();
     this.seen.clear();
     this.baseProject = null;
@@ -125,8 +128,32 @@ export class ProjectSyncModel {
     this.disposeReaction = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    // The unsaved edits as they are now, detached from the models: once
+    // closed, this syncer never reads the project again (it may be reopened,
+    // with its rows cleared, while these are still going out).
+    this.outbox = this.serverConfirmed
+      ? orderForBatches(this.computeChanges())
+      : [];
     this.closed = true;
-    if (this.serverConfirmed) void this.sendBatch();
+    void this.drainOutbox();
+  }
+
+  /** Sends a closed project's outbox, a batch at a time, then stops. */
+  private async drainOutbox() {
+    if (this.inFlight) return; // the batch that's out drains the rest after
+    const batch = splitBatch(this.outbox).batch;
+    if (batch.length === 0) return;
+    this.outbox = this.outbox.slice(batch.length);
+    this.inFlight = new Map();
+    try {
+      await this.send(batch);
+    } catch (error) {
+      console.error("Couldn't save a closed project's last edits:", error);
+      this.outbox = [];
+    } finally {
+      this.inFlight = null;
+    }
+    await this.drainOutbox();
   }
 
   /** Whether some edit hasn't reached the server yet. */
@@ -249,6 +276,7 @@ export class ProjectSyncModel {
   private async sendBatch() {
     // Never two in flight: this one's answer schedules the next.
     if (this.inFlight) return;
+    if (this.closed) return this.drainOutbox();
     const changes = this.takeBatch();
     if (changes.length === 0) {
       if (this.status.kind !== "error") this.setStatus({ kind: "saved" });
@@ -272,7 +300,10 @@ export class ProjectSyncModel {
     } catch (error) {
       runInAction(() => {
         this.inFlight = null;
-        if (this.closed) return;
+        if (this.closed) {
+          void this.drainOutbox();
+          return;
+        }
         const delay =
           RETRY_DELAYS_MS[
             Math.min(this.failures, RETRY_DELAYS_MS.length - 1)
@@ -288,10 +319,7 @@ export class ProjectSyncModel {
       return;
     }
     this.failures = 0;
-    if (this.closed) {
-      if (this.computeChanges().length) void this.sendBatch();
-      return;
-    }
+    if (this.closed) return this.drainOutbox();
     if (this.computeChanges().length) this.schedule(SYNC_DEBOUNCE_MS);
     else this.setStatus({ kind: "saved" });
   }
@@ -302,40 +330,27 @@ export class ProjectSyncModel {
    * to the server's version, and the editor says why.
    */
   private takeBatch(): SyncChange[] {
-    const batch: SyncChange[] = [];
-    const tooBig: SyncResult["rejected"] = [];
-    let bytes = 0;
-    for (const change of this.computeChanges()) {
-      const size = "doc" in change ? JSON.stringify(change.doc).length : 100;
-      if (
-        size > LIMITS.rowBytes &&
-        change.table !== "projects" &&
-        change.op !== "delete"
-      ) {
+    const { batch, tooBig } = splitBatch(
+      orderForBatches(this.computeChanges()),
+    );
+    for (const change of tooBig)
+      if (change.table !== "projects" && change.op !== "delete")
         this.revert(
           rowId(change.table, change.key),
           stableStringify(change.doc),
         );
-        tooBig.push({
-          table: change.table,
-          key: change.key,
-          reason: `It's ${Math.round(size / 1000)} KB; a row can be at most ${LIMITS.rowBytes / 1000} KB.`,
-        });
-        continue;
-      }
-      if (batch.length > 0 && bytes + size > MAX_BATCH_BYTES) break;
-      batch.push(change);
-      bytes += size;
-    }
-    if (tooBig.length) this.lastProblems = tooBig;
+    if (tooBig.length)
+      this.lastProblems = tooBig.map((change) => ({
+        table: change.table,
+        key: "key" in change ? change.key : "",
+        reason: `It's too big to store: a row can be at most ${LIMITS.rowBytes / 1000} KB.`,
+      }));
     return batch;
   }
 
   /** A batch's answer: the sent rows are now the base, and refused ones go back to the server's. */
   private settle(sent: Map<string, string | null>, result: SyncResult) {
     this.inFlight = null;
-    // A closed project's rows are reloaded when it opens again.
-    if (this.closed) return;
     const refused = new Set(
       [...result.skipped, ...result.rejected].map((r) =>
         rowId(r.table as EditorTable, r.key),
@@ -347,7 +362,8 @@ export class ProjectSyncModel {
         continue;
       }
       if (refused.has(id)) {
-        this.revert(id, json);
+        // A closed project's rows are reloaded when it opens again.
+        if (!this.closed) this.revert(id, json);
         continue;
       }
       if (json === null) this.base.delete(id);
@@ -357,6 +373,7 @@ export class ProjectSyncModel {
       }
     }
     this.lastProblems = [...result.skipped, ...result.rejected];
+    if (this.closed) return;
     // The server may have repaired rows we sent (a trimmed segment, a moved
     // child); take its version of any row with no newer edits.
     this.mergeServer();
@@ -481,6 +498,76 @@ export class ProjectSyncModel {
     else list.push(model);
   }
 }
+
+/** A change's size as JSON (Infinity when it can't be JSON). */
+const sizeOf = (change: SyncChange) => {
+  if (!("doc" in change)) return 100;
+  try {
+    return JSON.stringify(change.doc).length;
+  } catch {
+    return Infinity;
+  }
+};
+
+/**
+ * The next batch, up to MAX_BATCH_BYTES, and the rows too big to ever send
+ * (they'd fail every batch they're in).
+ */
+const splitBatch = (changes: SyncChange[]) => {
+  const batch: SyncChange[] = [];
+  const tooBig: SyncChange[] = [];
+  let bytes = 0;
+  for (const change of changes) {
+    const size = sizeOf(change);
+    if (size > LIMITS.rowBytes) {
+      tooBig.push(change);
+      continue;
+    }
+    if (batch.length > 0 && bytes + size > MAX_BATCH_BYTES) break;
+    batch.push(change);
+    bytes += size;
+  }
+  return { batch, tooBig };
+};
+
+/**
+ * Changes in an order that's safe to cut into batches: every row is created
+ * before anything that points at it, so a reference never reaches the server
+ * ahead of its target (which would repair it away). Folders go outermost
+ * first, then strings and switches, then virtual strings; then node updates,
+ * sequences, playlists and the project; deletes last.
+ */
+export const orderForBatches = (changes: SyncChange[]): SyncChange[] => {
+  const createdFolders = new Map<string, string | null>();
+  for (const c of changes)
+    if (c.table === "nodes" && c.op === "create" && c.doc.kind === "folder")
+      createdFolders.set(c.key, c.doc.parentId);
+  const depth = (key: string) => {
+    let d = 0;
+    let parent = createdFolders.get(key) ?? null;
+    while (parent !== null && createdFolders.has(parent) && d < 1000) {
+      d++;
+      parent = createdFolders.get(parent) ?? null;
+    }
+    return d;
+  };
+  const rank = (c: SyncChange): number => {
+    if (c.op === "delete")
+      return c.table === "playlists" ? 20 : c.table === "sequences" ? 21 : 22;
+    if (c.table === "nodes" && c.op === "create") {
+      if (c.doc.kind === "folder") return depth(c.key) / 2000;
+      return c.doc.kind === "virtual_string" ? 2 : 1;
+    }
+    if (c.table === "nodes") return 3;
+    if (c.table === "sequences") return 4;
+    if (c.table === "playlists") return 5;
+    return 6;
+  };
+  return changes
+    .map((change, index) => ({ change, index, rank: rank(change) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ change }) => change);
+};
 
 const splitId = (id: string): [EditorTable, string] => {
   const at = id.indexOf(":");

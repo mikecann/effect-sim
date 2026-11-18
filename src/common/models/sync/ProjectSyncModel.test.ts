@@ -3,6 +3,7 @@ import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import type { ProjectData } from "../../../../convex/functions";
 import { ProjectModel } from "../../../../shared/models/ProjectModel";
 import {
+  orderForBatches,
   ProjectSyncModel,
   SYNC_DEBOUNCE_MS,
   type SyncChange,
@@ -238,5 +239,82 @@ describe("ProjectSyncModel", () => {
     ]);
     expect(label("a")).toBe("A");
     expect(sync.lastProblems[0]).toMatchObject({ key: "a" });
+  });
+
+  it("closing with unsaved edits sends them once, then stops", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("renamed"); // and the project closes before the debounce
+    sync.close();
+    await tick(0);
+    expect(calls).toHaveLength(1);
+    calls[0]?.resolve(ok(1));
+    // Reopening clears the shared rows; the closed syncer mustn't read them.
+    project.clearRows();
+    await tick(SYNC_DEBOUNCE_MS * 20);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("closing while a batch is out sends the rest after it, once", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    const b = project.findNode("b");
+    if (a?.kind !== "folder" || b?.kind !== "folder") throw new Error("no a/b");
+    a.setLabel("A1");
+    await tick(SYNC_DEBOUNCE_MS);
+    expect(calls).toHaveLength(1);
+    b.setLabel("B1");
+    sync.close();
+    project.clearRows();
+    calls[0]?.resolve(ok(1));
+    await tick(0);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.changes.map((c) => ("key" in c ? c.key : ""))).toContain(
+      "b",
+    );
+    calls[1]?.resolve(ok(2));
+    await tick(SYNC_DEBOUNCE_MS * 20);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("orders changes so a batch never refers to a row a later batch creates", () => {
+    const node = (key: string, doc: Record<string, unknown>) =>
+      ({ table: "nodes", op: "create", key, doc }) as SyncChange;
+    const ordered = orderForBatches([
+      { table: "nodes", op: "delete", key: "gone" },
+      {
+        table: "playlists",
+        op: "create",
+        key: "p",
+        doc: { name: "P", sequenceIds: ["q"] },
+      },
+      {
+        table: "sequences",
+        op: "create",
+        key: "q",
+        doc: { name: "Q", numFrames: 1, tracks: [] },
+      },
+      node("v", { kind: "virtual_string", parentId: "inner" }),
+      node("inner", { kind: "folder", parentId: "outer" }),
+      node("s", { kind: "string", parentId: "inner" }),
+      node("outer", { kind: "folder", parentId: null }),
+      {
+        table: "nodes",
+        op: "update",
+        key: "old",
+        doc: { kind: "folder", parentId: "outer" },
+      } as SyncChange,
+    ]);
+    expect(ordered.map((c) => ("key" in c ? c.key : ""))).toEqual([
+      "outer",
+      "inner",
+      "s",
+      "v",
+      "old",
+      "q",
+      "p",
+      "gone",
+    ]);
   });
 });

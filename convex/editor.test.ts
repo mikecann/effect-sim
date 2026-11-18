@@ -638,4 +638,64 @@ describe("editor.sync", () => {
     expect(await node("b")).toBeUndefined();
     expect((await node("a"))?.parentId).toBeNull();
   });
+
+  test("project settings HWIR can't run are rejected", async () => {
+    const { t, sync, projectId } = await setup();
+    const settings = (extra: object) => ({
+      table: "projects" as const,
+      op: "update" as const,
+      doc: {
+        name: "House",
+        settings: { nightMode: true, lightsOnTop: true, ...extra },
+      },
+    });
+    for (const extra of [
+      { defaultFramerate: Infinity },
+      { defaultFramerate: 1e12 },
+      { defaultFramerate: 0 },
+      { stringLedSize: -1 },
+    ]) {
+      const result = await sync([settings(extra)]);
+      expect(result.applied, JSON.stringify(extra)).toBe(0);
+      expect(result.rejected).toHaveLength(1);
+    }
+    const ok = await sync([
+      settings({ defaultFramerate: 15, stringLedSize: 0.1 }),
+    ]);
+    expect(ok.applied).toBe(1);
+    const project = await t.query(api.functions.getProject, { projectId });
+    expect(project.settings.defaultFramerate).toBe(15);
+  });
+
+  test("effect props are stored as plain JSON, with only the fields the effect takes", async () => {
+    const { sync, data } = await setup();
+    const result = await sync([
+      // Production has props an effect switched away from left behind.
+      {
+        table: "sequences",
+        op: "create",
+        key: "left",
+        doc: sequence([], { color: [1, 2, 3], numBounces: 7, speed: 1 }),
+      },
+      {
+        table: "sequences",
+        op: "create",
+        key: "big",
+        doc: sequence([], { color: [1, 2, 3], extra: 10n }),
+      },
+      {
+        table: "sequences",
+        op: "create",
+        key: "bytes",
+        doc: sequence([], { color: [1, 2, 3], extra: new ArrayBuffer(8) }),
+      },
+    ]);
+    expect(result.applied).toBe(1);
+    expect(result.rejected.map((r) => r.key)).toEqual(["big", "bytes"]);
+    expect(result.rejected[0]?.reason).toBe(
+      "It can't be stored: it isn't plain JSON.",
+    );
+    const stored = (await data()).sequences[0]?.tracks[0]?.events[0];
+    expect(stored?.props).toEqual({ color: [1, 2, 3] });
+  });
 });

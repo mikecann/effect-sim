@@ -5,7 +5,10 @@ import type {
   projectFieldsValidator,
   sequenceFieldsValidator,
 } from "./schema";
-import { findEffectPropsProblem } from "../shared/effects/props";
+import {
+  findEffectPropsProblem,
+  parseEffectProps,
+} from "../shared/effects/props";
 
 export { stableStringify } from "../shared/stableStringify";
 
@@ -68,8 +71,30 @@ const tooMany = (what: string, list: readonly unknown[], max: number) =>
     ? `It has ${list.length} ${what}; the most is ${max}.`
     : null;
 
-const rowBytes = (doc: unknown) =>
-  new TextEncoder().encode(JSON.stringify(doc)).length;
+/** A row's size as JSON, or null if it can't be JSON at all (a BigInt, say). */
+const rowBytes = (doc: unknown): number | null => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(doc)).length;
+  } catch {
+    return null;
+  }
+};
+
+/** Project settings HWIR and the editor can run with. */
+const findProjectProblem = (project: ProjectFields): string | null => {
+  const { defaultFramerate, stringLedSize } = project.settings;
+  if (
+    defaultFramerate !== undefined &&
+    !(defaultFramerate >= 1 && defaultFramerate <= 120)
+  )
+    return `The frame rate is 1 to 120 frames a second, not ${defaultFramerate}.`;
+  if (
+    stringLedSize !== undefined &&
+    !(stringLedSize >= 0.001 && stringLedSize <= 10)
+  )
+    return `The LED size is 0.001 to 10 metres, not ${stringLedSize}.`;
+  return tooLong("The name", project.name, LIMITS.name);
+};
 
 /** Why a row can't be saved as it is, judged on its own; null when it can. */
 export const findRowProblem = (
@@ -77,11 +102,11 @@ export const findRowProblem = (
   doc: NodeFields | SequenceFields | PlaylistFields | ProjectFields,
 ): string | null => {
   const bytes = rowBytes(doc);
+  if (bytes === null) return "It can't be stored: it isn't plain JSON.";
   if (bytes > LIMITS.rowBytes)
     return `It's ${Math.round(bytes / 1000)} KB; a row can be at most ${LIMITS.rowBytes / 1000} KB.`;
 
-  if (table === "projects")
-    return tooLong("The name", (doc as ProjectFields).name, LIMITS.name);
+  if (table === "projects") return findProjectProblem(doc as ProjectFields);
 
   if (table === "nodes") {
     const node = doc as NodeFields;
@@ -171,6 +196,38 @@ export const findRowProblem = (
     tooLong("The name", playlist.name, LIMITS.name) ??
     tooMany("sequences", playlist.sequenceIds, LIMITS.sequenceIds)
   );
+};
+
+/**
+ * A row as it's stored: each effect's props parsed by its schema (so only the
+ * fields the effect takes are kept). Call after findRowProblem passes.
+ */
+export const normalizeRow = <
+  D extends NodeFields | SequenceFields | PlaylistFields,
+>(
+  table: EditorTable,
+  doc: D,
+): D => {
+  if (table !== "sequences") return doc;
+  const sequence = doc as SequenceFields;
+  return {
+    ...sequence,
+    tracks: sequence.tracks.map((track) => ({
+      ...track,
+      events: track.events.map((event) => {
+        const parsed = parseEffectProps(
+          event.kind,
+          event.effectDefinitionId,
+          event.props,
+        );
+        if (!parsed.ok || parsed.props === undefined) {
+          const { props: _props, ...rest } = event;
+          return rest;
+        }
+        return { ...event, props: parsed.props };
+      }),
+    })),
+  } as D;
 };
 
 /** Why a virtual string's segments don't fit the strings they point at, or null. */

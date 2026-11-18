@@ -35,6 +35,9 @@ describe("effect props", () => {
     ).toMatch(/numBalls/);
     expect(
       findEffectPropsProblem("string_effect", "comet", { size: Infinity }),
+    ).toMatch(/plain JSON/);
+    expect(
+      findEffectPropsProblem("string_effect", "comet", { size: 5000 }),
     ).toMatch(/size/);
     expect(
       findEffectPropsProblem("string_effect", "setColor", {
