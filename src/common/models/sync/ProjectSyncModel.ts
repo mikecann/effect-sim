@@ -1,4 +1,11 @@
-import { action, makeObservable, observable, reaction, runInAction, toJS } from "mobx";
+import {
+  action,
+  makeObservable,
+  observable,
+  reaction,
+  runInAction,
+  toJS,
+} from "mobx";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "../../../../convex/_generated/api";
 import type { Doc } from "../../../../convex/_generated/dataModel";
@@ -7,7 +14,9 @@ import type { ProjectModel } from "../../../../shared/models/ProjectModel";
 import { toEditorDoc, type EditorTable } from "../../../../shared/models/docs";
 import { stableStringify } from "../../../../shared/stableStringify";
 
-export type SyncChange = FunctionArgs<typeof api.editor.sync>["changes"][number];
+export type SyncChange = FunctionArgs<
+  typeof api.editor.sync
+>["changes"][number];
 export type SyncResult = FunctionReturnType<typeof api.editor.sync>;
 
 /** What the editor shows about saving (src/common/SaveStatus.tsx). */
@@ -112,7 +121,9 @@ export class ProjectSyncModel {
     this.serverConfirmed = this.serverConfirmed || confirmed;
     this.mergeServer();
     if (this.serverConfirmed && !wasConfirmed) {
-      this.setStatus(this.computeChanges().length ? { kind: "saving" } : { kind: "saved" });
+      this.setStatus(
+        this.computeChanges().length ? { kind: "saving" } : { kind: "saved" },
+      );
       this.schedule(0);
     }
   }
@@ -159,8 +170,9 @@ export class ProjectSyncModel {
   /** Changes whenever any row or the project's own fields change. */
   private snapshotKey() {
     return (
-      [...this.localRows().values()].map((r) => `${r.table}:${r.key}:${r.json}`).join("\n") +
-      this.localProjectJson()
+      [...this.localRows().values()]
+        .map((r) => `${r.table}:${r.key}:${r.json}`)
+        .join("\n") + this.localProjectJson()
     );
   }
 
@@ -180,7 +192,10 @@ export class ProjectSyncModel {
         const [table, key] = splitId(id);
         changes.push({ table, op: "delete", key });
       }
-    if (this.baseProject !== null && this.localProjectJson() !== this.baseProject)
+    if (
+      this.baseProject !== null &&
+      this.localProjectJson() !== this.baseProject
+    )
       changes.push({
         table: "projects",
         op: "update",
@@ -210,7 +225,8 @@ export class ProjectSyncModel {
     }
     const sent = new Map<string, string | null>();
     for (const change of changes)
-      if (change.table === "projects") sent.set("projects", stableStringify(change.doc));
+      if (change.table === "projects")
+        sent.set("projects", stableStringify(change.doc));
       else
         sent.set(
           rowId(change.table, change.key),
@@ -226,7 +242,9 @@ export class ProjectSyncModel {
       runInAction(() => {
         this.inFlight = null;
         const delay =
-          RETRY_DELAYS_MS[Math.min(this.failures, RETRY_DELAYS_MS.length - 1)] ?? 30_000;
+          RETRY_DELAYS_MS[
+            Math.min(this.failures, RETRY_DELAYS_MS.length - 1)
+          ] ?? 30_000;
         this.failures++;
         this.setStatus({
           kind: "error",
@@ -307,7 +325,11 @@ export class ProjectSyncModel {
   private mergeServer() {
     const server = this.serverRows();
     const local = this.localRows();
-    for (const id of new Set([...server.keys(), ...local.keys(), ...this.base.keys()])) {
+    for (const id of new Set([
+      ...server.keys(),
+      ...local.keys(),
+      ...this.base.keys(),
+    ])) {
       if (this.inFlight?.has(id)) continue;
       const base = this.base.get(id);
       const localJson = local.get(id)?.json;
@@ -320,10 +342,16 @@ export class ProjectSyncModel {
 
     if (this.serverProject && !this.inFlight?.has("projects")) {
       const serverJson = stableStringify(projectFields(this.serverProject));
-      if (this.baseProject === null || this.localProjectJson() === this.baseProject) {
+      if (
+        this.baseProject === null ||
+        this.localProjectJson() === this.baseProject
+      ) {
         this.baseProject = serverJson;
         if (this.localProjectJson() !== serverJson)
-          this.project.doc = { ...this.project.doc, ...projectFields(this.serverProject) };
+          this.project.doc = {
+            ...this.project.doc,
+            ...projectFields(this.serverProject),
+          };
       } else this.baseProject = serverJson;
     }
   }
@@ -331,7 +359,11 @@ export class ProjectSyncModel {
   /** Makes the local model match the server's row (or removes it). */
   private adopt(id: string, row: (Row & { full: object }) | undefined) {
     const [table, key] = splitId(id);
-    const list = this.project[table] as Array<{ key: string; doc: object; kind?: string }>;
+    const list = this.project[table] as Array<{
+      key: string;
+      doc: object;
+      kind?: string;
+    }>;
     const index = list.findIndex((m) => m.key === key);
     if (!row) {
       if (index >= 0) list.splice(index, 1);
@@ -339,7 +371,11 @@ export class ProjectSyncModel {
     }
     const full = structuredClone(row.full) as never;
     const existing = list[index];
-    if (existing && (table !== "nodes" || existing.kind === (row.full as { kind: string }).kind)) {
+    if (
+      existing &&
+      (table !== "nodes" ||
+        existing.kind === (row.full as { kind: string }).kind)
+    ) {
       existing.doc = full;
       return;
     }

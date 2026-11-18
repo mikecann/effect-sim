@@ -8,7 +8,11 @@ import type {
 import { useApp } from "../AppContext";
 import { isUnauthorized } from "./EditorTokenModel";
 
-type TokenMutation = FunctionReference<"mutation", "public", { token?: string }>;
+type TokenMutation = FunctionReference<
+  "mutation",
+  "public",
+  { token?: string }
+>;
 
 /**
  * useMutation for the editor's own mutations: adds the editor token, and asks

@@ -49,7 +49,11 @@ export const SaveStatus = () => {
         </Group>
       </Tooltip>
       {/* Retrying shows as "Saving…" straight away, so it can't be pressed twice. */}
-      <Button size="compact-xs" variant="subtle" onClick={() => app.sync?.flush()}>
+      <Button
+        size="compact-xs"
+        variant="subtle"
+        onClick={() => app.sync?.flush()}
+      >
         Retry now
       </Button>
     </Group>
