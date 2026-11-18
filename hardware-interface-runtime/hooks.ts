@@ -1,3 +1,4 @@
+import { RENDERED_PATTERN_KINDS } from "../shared/mapping/ledCodes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -289,6 +290,7 @@ export const useHeartbeat = (model: HWIRAppModel) => {
             : { key: s.key, connection, lastSeenAt };
         }),
         plug: plugReport(model.plugStatus()),
+        patterns: [...RENDERED_PATTERN_KINDS],
       }).catch((e) => logger.error(`Error sending heartbeat: ${e}`));
     };
     beat();

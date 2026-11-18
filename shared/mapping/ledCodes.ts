@@ -49,6 +49,24 @@ export const ledOfCode = (
   return null;
 };
 
+/**
+ * The mapping pattern kinds this HWIR renders. HWIR reports them in its
+ * heartbeat and with every ack, and Convex only shows (and only accepts acks
+ * for) a kind added after the first release when the running HWIR lists it:
+ * an older HWIR doesn't know it and would light every LED while still acking.
+ */
+export const RENDERED_PATTERN_KINDS = [
+  "off",
+  "all",
+  "string",
+  "led",
+  "bit",
+  "ranges",
+] as const;
+
+/** Kinds an HWIR has to list before Convex shows them (see above). */
+export const GATED_PATTERN_KINDS: readonly string[] = ["ranges"];
+
 /** Whether a pattern lights this LED. */
 export const isLit = (
   pattern: MappingPattern,

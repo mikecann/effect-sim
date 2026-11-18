@@ -336,8 +336,64 @@ describe("mappingSession", () => {
     ).not.toHaveProperty("ledPositions");
   });
 
+  const beat = (
+    t: Awaited<ReturnType<typeof setupMapping>>["t"],
+    projectId: Id<"projects">,
+    patterns?: string[],
+  ) =>
+    t.mutation(api.hwir.heartbeat, {
+      token: tokens.hwir,
+      projectId,
+      commit: patterns ? "new123" : "old123",
+      fps: 15,
+      strings: [{ key: "s1", connection: "live" }],
+      ...(patterns ? { patterns } : {}),
+    });
+
+  test("ranges are only shown, and their acks only taken, from an HWIR that renders them", async () => {
+    const { t, projectId, session, send } = await setupMapping();
+    const pattern = {
+      kind: "ranges" as const,
+      ranges: [{ nodeKey: "s1", from: 0, to: 1 }],
+    };
+    // No heartbeat yet, then an old HWIR: refused.
+    await expect(
+      t.mutation(api.mapping.show, { ...send.editor, pattern }),
+    ).rejects.toThrow(/doesn.t render/);
+    await beat(t, projectId);
+    await expect(
+      t.mutation(api.mapping.show, { ...send.editor, pattern }),
+    ).rejects.toThrow(/doesn.t render/);
+
+    await beat(t, projectId, ["off", "all", "string", "led", "bit", "ranges"]);
+    await t.mutation(api.mapping.show, { ...send.editor, pattern });
+    const seq = (await session())?.kind === "capturing" ? 1 : -1;
+
+    // An ack from an HWIR that doesn't list ranges (rolled back) is dropped.
+    expect(
+      await t.mutation(api.mapping.shown, { ...send.hwir, seq }),
+    ).toMatchObject({ status: "ignored" });
+    expect(await session()).not.toMatchObject({ shownSeq: seq });
+    await t.mutation(api.mapping.shown, {
+      ...send.hwir,
+      seq,
+      patterns: ["ranges"],
+    });
+    expect(await session()).toMatchObject({ shownSeq: seq });
+
+    // A rolled-back HWIR's heartbeat (no patterns) clears what it renders.
+    await beat(t, projectId);
+    expect(
+      (await t.query(api.hwir.presence, { projectId }))?.patterns,
+    ).toEqual([]);
+    await expect(
+      t.mutation(api.mapping.show, { ...send.editor, pattern }),
+    ).rejects.toThrow(/doesn.t render/);
+  });
+
   test("ranges light runs of LEDs; malformed or too many are refused", async () => {
-    const { t, session, send } = await setupMapping();
+    const { t, projectId, session, send } = await setupMapping();
+    await beat(t, projectId, ["ranges"]);
     const ranges = [
       { nodeKey: "s1", from: 0, to: 1 },
       { nodeKey: "s2", from: 40, to: 47 },

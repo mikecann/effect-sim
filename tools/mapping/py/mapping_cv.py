@@ -843,7 +843,7 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
             far = np.hypot(*(peaks_a - pts[0]).T) > step * 0.8
             rivals = far & (np.abs(d_all - d_first) <= 0.35 * ref)
             first_w = float(weights_a[np.argmin(np.hypot(*(peaks_a - pts[0]).T))])
-            if rivals.any() and float(weights_a[rivals].max()) >= 0.5 * first_w:
+            if rivals.any() and float(weights_a[rivals].max()) >= 0.15 * first_w:
                 ambiguous = True
         info["ambiguous"] = ambiguous
         # A partial chain has to measure its own spacing (three spots at

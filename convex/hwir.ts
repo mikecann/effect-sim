@@ -18,9 +18,10 @@ export const heartbeat = hwirMutation({
     fps: v.number(),
     strings: v.array(hwirStringStatusValidator),
     plug: v.optional(hwirPlugStatusValidator),
+    patterns: v.optional(v.array(v.string())),
   },
   returns: v.null(),
-  handler: async (ctx, { projectId, commit, fps, strings, plug }) => {
+  handler: async (ctx, { projectId, commit, fps, strings, plug, patterns }) => {
     const row = await ctx.db
       .query("hwirPresences")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -28,7 +29,7 @@ export const heartbeat = hwirMutation({
     if (!row) {
       await hwirPresence.create(
         ctx,
-        { projectId, commit, fps, strings, plug },
+        { projectId, commit, fps, strings, plug, patterns },
         { type: "HEARTBEAT" },
       );
       return null;
@@ -38,6 +39,9 @@ export const heartbeat = hwirMutation({
       fps,
       strings,
       plug,
+      // Absent clears it: an HWIR rolled back to before block fills sends
+      // none, and must stop being shown them at once.
+      patterns,
     });
     await hwirPresence.send(ctx, row._id, { type: "HEARTBEAT" });
     return null;
@@ -60,6 +64,7 @@ export const presence = query({
       fps: row.fps,
       strings: row.strings,
       plug: row.plug ?? null,
+      patterns: row.patterns ?? [],
     };
   },
 });

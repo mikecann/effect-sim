@@ -395,6 +395,10 @@ export default defineSchema({
     // Absent when HWIR has no plug set up, or hasn't switched it yet.
     // eslint-disable-next-line machines/no-optional-on-machine-tables -- heartbeat data like commit and fps, the same in every presence state
     plug: v.optional(hwirPlugStatusValidator),
+    // The mapping pattern kinds this HWIR renders; absent from an HWIR older
+    // than block fills, which renders only the first ones.
+    // eslint-disable-next-line machines/no-optional-on-machine-tables -- heartbeat data like commit and fps, the same in every presence state
+    patterns: v.optional(v.array(v.string())),
     state: hwirPresenceState,
     stateTimers: machineTimers,
   }).index("by_project", ["projectId"]),

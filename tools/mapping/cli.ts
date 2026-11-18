@@ -571,7 +571,7 @@ program
 
       if (opts.fillBlocks) {
         const presence = await mapping.presence(manifest.projectId);
-        const support = hwirSupportsRanges(presence?.commit, toolDir);
+        const support = hwirSupportsRanges(presence);
         if (!support.ok) throw new Error(support.why);
         const refs: string[] = opts.fillBlocks;
         const keys = refs.includes("all")
