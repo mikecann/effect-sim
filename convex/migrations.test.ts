@@ -1,14 +1,31 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import { register } from "@convex-dev/state-machines/test";
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 import schema from "./schema";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.ts");
 
+// Production's data is from before the rebuild, which the schema no longer
+// takes: so here the editor's tables take anything, as they did in the
+// widened schema the migration first runs on.
+const legacySchema = defineSchema({
+  ...schema.tables,
+  nodes: defineTable(v.any())
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
+  sequences: defineTable(v.any())
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
+  playlists: defineTable(v.any())
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
+});
+
 const setup = () => {
-  const t = convexTest(schema, modules);
+  const t = convexTest(legacySchema, modules);
   register(t);
   return t;
 };
@@ -177,10 +194,11 @@ test("the migration keys every row, moves switch power out and repairs reference
   });
 
   await t.run(async (ctx) => {
-    const get = async (id: Id<"nodes">) => {
-      const node = await ctx.db.get("nodes", id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the legacy tables hold v.any() docs.
+    const get = async (id: string): Promise<any> => {
+      const node = await ctx.db.get(id as never);
       if (!node) throw new Error(`${id} is gone`);
-      return node as typeof node & { children?: unknown; isOn?: unknown };
+      return node;
     };
     const string = await get(ids.string);
     expect(string.key).toBe(ids.string);
@@ -190,7 +208,7 @@ test("the migration keys every row, moves switch power out and repairs reference
     expect(orphan.parentId).toBeNull();
     expect(orphan.isOn).toBeUndefined();
     const virtual = await get(ids.virtual);
-    expect(virtual.kind === "virtual_string" && virtual.segments).toEqual([
+    expect(virtual.segments).toEqual([
       { nodeId: ids.string, fromIndex: 0, toIndex: 49 },
       { nodeId: ids.string, fromIndex: 90, toIndex: 99 },
     ]);
@@ -198,12 +216,14 @@ test("the migration keys every row, moves switch power out and repairs reference
     expect(
       Object.fromEntries(switches.map((s) => [s.nodeKey, s.state.kind])),
     ).toEqual({ [ids.orphan]: "on", [ids.unknownSwitch]: "unknown" });
-    const playlist = await ctx.db.get("playlists", ids.playlist);
-    expect(playlist?.sequenceIds).toEqual([ids.sequence, ids.sequence]);
+    const playlist = await get(ids.playlist);
+    expect(playlist.sequenceIds).toEqual([ids.sequence, ids.sequence]);
   });
 
   // A second run changes nothing.
   const again = await t.mutation(internal.migrations.run, {});
-  expect(Object.values(again).every((n) => typeof n === "object" || n === 0)).toBe(true);
+  expect(
+    Object.values(again).every((n) => typeof n === "object" || n === 0),
+  ).toBe(true);
   expect(again.keysAdded).toEqual({ nodes: 0, sequences: 0, playlists: 0 });
 });

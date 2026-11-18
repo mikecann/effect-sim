@@ -1,11 +1,18 @@
 import { defineSchema, defineTable } from "convex/server";
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
 import { machineTimers } from "@convex-dev/state-machines";
 
+// The editor owns nodes, sequences and playlists. Each has a `key`, the
+// editor's own id for it (crypto.randomUUID() for new rows, the old _id string
+// for rows from before the rebuild), and every reference between them holds a
+// key: parentId, segments[].nodeId, appliesTo.nodeIds, sequenceIds, the
+// display's mode id. The fields kept their names from when they held Convex
+// ids. The editor writes them all through one mutation, editor.sync
+// (convex/editor.ts).
+
 export const appliesToValidator = v.union(
-  v.object({ kind: v.literal("nodes"), nodeIds: v.array(v.id("nodes")) }),
+  v.object({ kind: v.literal("nodes"), nodeIds: v.array(v.string()) }),
   v.object({ kind: v.literal("all_nodes") }),
 );
 
@@ -13,23 +20,17 @@ const commonTrackEventFields = {
   id: v.string(),
   startFrame: v.number(),
   endFrame: v.number(),
+  effectDefinitionId: v.string(),
+  appliesTo: appliesToValidator,
+  // Checked against the effect's zod schema (shared/effects/props.ts) by
+  // editor.sync, as Convex validators can't say "whatever this effect takes".
+  props: v.optional(v.any()),
 };
 
 export const trackEventValidator = v.union(
-  v.object({
-    ...commonTrackEventFields,
-    kind: v.literal("string_effect"),
-    effectDefinitionId: v.string(),
-    appliesTo: appliesToValidator,
-    props: v.optional(v.any()),
-  }),
-  v.object({
-    ...commonTrackEventFields,
-    kind: v.literal("switch_effect"),
-    effectDefinitionId: v.string(),
-    appliesTo: appliesToValidator,
-    props: v.optional(v.any()),
-  }),
+  // eslint-disable-next-line machines/no-optional-on-machine-tables -- not a machine's state: a track event's `kind` is which sort of effect it is, and props are optional.
+  v.object({ ...commonTrackEventFields, kind: v.literal("string_effect") }),
+  v.object({ ...commonTrackEventFields, kind: v.literal("switch_effect") }),
 );
 
 export const trackValidator = v.object({
@@ -41,23 +42,27 @@ export const trackValidator = v.object({
 export type TrackEvent = Infer<typeof trackEventValidator>;
 export type Track = Infer<typeof trackValidator>;
 
-export const iconValidator = v.union(
-  v.object({
-    kind: v.literal("emoji"),
-    emoji: v.string(),
-  }),
-);
+export const iconValidator = v.object({
+  kind: v.literal("emoji"),
+  emoji: v.string(),
+});
 
-export const commonNodeFields = {
-  // The editor's own id for the row (migrated rows: their old _id). Optional
-  // only until the key migration has run (convex/migrations.ts).
-  key: v.optional(v.string()),
+export const pointValidator = v.object({
+  x: v.number(),
+  y: v.number(),
+  z: v.number(),
+});
+
+export type Point = Infer<typeof pointValidator>;
+
+// Where a node sits in the tree. parentId is a folder's key, or null at the top.
+const treeFields = {
   order: v.number(),
-  parentId: v.union(v.id("nodes"), v.null()),
-  projectId: v.id("projects"),
+  parentId: v.union(v.string(), v.null()),
 };
 
-export const stringNodeFields = {
+const stringNodeFields = {
+  ...treeFields,
   kind: v.literal("string"),
   name: v.string(),
   icon: iconValidator,
@@ -66,54 +71,104 @@ export const stringNodeFields = {
   ipAddress: v.string(),
   port: v.number(),
   brightness: v.number(),
-  pathPoints: v.array(
-    v.object({
-      position: v.object({
-        x: v.number(),
-        y: v.number(),
-        z: v.number(),
-      }),
-    }),
-  ),
+  // The path drawn by hand in the editor; LEDs are spaced along it.
+  pathPoints: v.array(v.object({ position: pointValidator })),
+  // One per LED, from camera mapping (convex/mappingSession.ts). When there,
+  // the editor and effects use them as they are, instead of the path.
+  ledPositions: v.optional(v.array(pointValidator)),
 };
 
-export const switchNodeFields = {
+const switchNodeFields = {
+  ...treeFields,
   kind: v.literal("switch"),
   name: v.string(),
   icon: iconValidator,
   ipAddress: v.string(),
-  // Moving to switchStates (convex/migrations.ts).
-  isOn: v.optional(v.union(v.boolean(), v.null())),
   apiType: v.optional(
     v.union(v.literal("athom_type1"), v.literal("athom_type2")),
   ),
 };
 
 export const segmentValidator = v.object({
-  nodeId: v.id("nodes"),
+  // A string node's key.
+  nodeId: v.string(),
+  // Inclusive LED indexes on that string, 0 to ledCount - 1.
   fromIndex: v.number(),
   toIndex: v.number(),
   isReversed: v.optional(v.boolean()),
 });
 
-export const virtualStringNodeFields = {
+const virtualStringNodeFields = {
+  ...treeFields,
   kind: v.literal("virtual_string"),
   name: v.string(),
   icon: iconValidator,
   segments: v.array(segmentValidator),
 };
 
-export const folderNodeFields = {
+const folderNodeFields = {
+  ...treeFields,
   kind: v.literal("folder"),
   label: v.string(),
-  // Never read: a folder's children are the nodes whose parentId is it.
-  children: v.optional(v.array(v.id("nodes"))),
 };
 
-// What the phone remote (ios/) asks the lights to do. HWIR applies it.
+// A node as the editor sends it to editor.sync: everything but its project
+// and key, which the change carries.
+export const nodeFieldsValidator = v.union(
+  v.object(stringNodeFields),
+  v.object(folderNodeFields),
+  v.object(switchNodeFields),
+  v.object(virtualStringNodeFields),
+);
+
+export const sequenceFields = {
+  name: v.string(),
+  numFrames: v.number(),
+  tracks: v.array(trackValidator),
+};
+export const sequenceFieldsValidator = v.object(sequenceFields);
+
+export const playlistFields = {
+  name: v.string(),
+  // Sequence keys, in play order. One can appear more than once.
+  sequenceIds: v.array(v.string()),
+};
+export const playlistFieldsValidator = v.object(playlistFields);
+
+export const projectSettingsValidator = v.object({
+  nightMode: v.boolean(),
+  lightsOnTop: v.boolean(),
+  stringLedSize: v.optional(v.number()),
+  cameraControl: v.optional(
+    v.union(v.literal("orbit"), v.literal("fly"), v.literal("first_person")),
+  ),
+  defaultFramerate: v.optional(v.number()),
+});
+export const projectFields = {
+  name: v.string(),
+  settings: projectSettingsValidator,
+};
+export const projectFieldsValidator = v.object(projectFields);
+
+const owned = { projectId: v.id("projects"), key: v.string() };
+
+// What the phone remote (ios/) asks the lights to play. `id` is the
+// playlist's or sequence's key.
+export const playbackModeValidator = v.union(
+  v.object({ kind: v.literal("playlist"), id: v.string() }),
+  v.object({ kind: v.literal("sequence"), id: v.string() }),
+);
+
+// Mapping: HWIR shows a mapping session's patterns (convex/mappingSession.ts)
+// instead of playing, then goes back to `returnTo`. `id` is the session's _id.
 export const displayModeValidator = v.union(
-  v.object({ kind: v.literal("playlist"), id: v.id("playlists") }),
-  v.object({ kind: v.literal("sequence"), id: v.id("sequences") }),
+  v.object({ kind: v.literal("playlist"), id: v.string() }),
+  v.object({ kind: v.literal("sequence"), id: v.string() }),
+  v.object({
+    kind: v.literal("mapping"),
+    id: v.id("mappingSessions"),
+    returnTo: playbackModeValidator,
+  }),
 );
 
 export const displaySettingsValidator = v.object({
@@ -125,6 +180,7 @@ export const displaySettingsValidator = v.object({
 
 export type DisplaySettings = Infer<typeof displaySettingsValidator>;
 export type DisplayMode = Infer<typeof displayModeValidator>;
+export type PlaybackMode = Infer<typeof playbackModeValidator>;
 
 // The displayControl machine's states (convex/displayControl.ts). Every state
 // carries the settings, so HWIR always plays `state.settings`.
@@ -167,15 +223,93 @@ export const switchStateValidator = v.union(
   v.object({ kind: v.literal("removed") }),
 );
 
-export default defineSchema({
-  // One row per switch node: whether its plug is on.
-  switchStates: defineTable({
-    projectId: v.id("projects"),
-    nodeKey: v.string(),
-    state: switchStateValidator,
-    stateTimers: machineTimers,
-  }).index("by_project_node", ["projectId", "nodeKey"]),
+// How each string's connection is doing, as HWIR reports it.
+export const stringConnectionValidator = v.union(
+  v.literal("connecting"),
+  v.literal("live"),
+  v.literal("degraded"),
+  v.literal("offline"),
+);
 
+export const hwirStringStatusValidator = v.object({
+  key: v.string(),
+  connection: stringConnectionValidator,
+});
+
+// Whether HWIR is running (convex/hwirPresence.ts), from its heartbeat.
+export const hwirPresenceState = v.union(
+  v.object({
+    kind: v.literal("online"),
+    since: v.number(),
+    lastSeenAt: v.number(),
+    // A heartbeat is due every 10 s; past this it's stale.
+    staleAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("stale"),
+    lastSeenAt: v.number(),
+    offlineAt: v.number(),
+  }),
+  v.object({ kind: v.literal("offline"), lastSeenAt: v.number() }),
+);
+
+// What a mapping session asks HWIR to light, for the camera to photograph.
+// - off / all: every string dark, or every LED lit;
+// - string: one string's LEDs, the rest dark;
+// - led: one LED;
+// - bit: every LED whose index has this bit set (or clear, when inverted), so
+//   a few photos tell every LED apart.
+export const mappingPatternValidator = v.union(
+  v.object({ kind: v.literal("off") }),
+  v.object({ kind: v.literal("all") }),
+  v.object({ kind: v.literal("string"), nodeKey: v.string() }),
+  v.object({
+    kind: v.literal("led"),
+    nodeKey: v.string(),
+    index: v.number(),
+  }),
+  v.object({
+    kind: v.literal("bit"),
+    bit: v.number(),
+    inverted: v.boolean(),
+  }),
+);
+
+export type MappingPattern = Infer<typeof mappingPatternValidator>;
+
+// A string's LED positions, as a session proposes or replaces them. null:
+// the string had none.
+export const stringPositionsValidator = v.object({
+  nodeKey: v.string(),
+  ledPositions: v.union(v.array(pointValidator), v.null()),
+});
+
+export const mappingSessionState = v.union(
+  v.object({
+    kind: v.literal("capturing"),
+    // The pattern the camera wants next. seq goes up by one with each.
+    request: v.object({ seq: v.number(), pattern: mappingPatternValidator }),
+    // The last seq HWIR has sent out over UDP (null: none yet).
+    shownSeq: v.union(v.number(), v.null()),
+    // Abandoned (the editor closed, the camera gave up) if nothing happens
+    // by then. Each pattern and ack moves it on.
+    expiresAt: v.number(),
+  }),
+  v.object({ kind: v.literal("solving") }),
+  v.object({
+    kind: v.literal("review"),
+    proposed: v.array(stringPositionsValidator),
+  }),
+  v.object({
+    kind: v.literal("applied"),
+    appliedAt: v.number(),
+    // What the strings had before, for ROLLBACK.
+    previous: v.array(stringPositionsValidator),
+  }),
+  v.object({ kind: v.literal("discarded"), reason: v.string() }),
+);
+
+export default defineSchema({
   // One row per project: the display's on/off, mode and brightness.
   displayControls: defineTable({
     projectId: v.id("projects"),
@@ -183,72 +317,56 @@ export default defineSchema({
     stateTimers: machineTimers,
   }).index("by_project", ["projectId"]),
 
-  projects: defineTable({
-    name: v.string(),
-    settings: v.object({
-      nightMode: v.boolean(),
-      lightsOnTop: v.boolean(),
-      stringLedSize: v.optional(v.number()),
-      cameraControl: v.optional(
-        v.union(
-          v.literal("orbit"),
-          v.literal("fly"),
-          v.literal("first_person"),
-        ),
-      ),
-      defaultFramerate: v.optional(v.number()),
-    }),
-  }),
+  // One row per switch node: whether its plug is on. Kept apart from the
+  // node, which is the editor's to write.
+  switchStates: defineTable({
+    projectId: v.id("projects"),
+    nodeKey: v.string(),
+    state: switchStateValidator,
+    stateTimers: machineTimers,
+  }).index("by_project_node", ["projectId", "nodeKey"]),
+
+  // One row per project: whether HWIR is up, what it runs and how its
+  // strings are. The fields beside `state` change with every heartbeat.
+  hwirPresences: defineTable({
+    projectId: v.id("projects"),
+    // The git commit HWIR is running.
+    commit: v.string(),
+    fps: v.number(),
+    strings: v.array(hwirStringStatusValidator),
+    state: hwirPresenceState,
+    stateTimers: machineTimers,
+  }).index("by_project", ["projectId"]),
+
+  // Camera mapping of LED positions, one row per session.
+  mappingSessions: defineTable({
+    projectId: v.id("projects"),
+    startedAt: v.number(),
+    state: mappingSessionState,
+    stateTimers: machineTimers,
+  }).index("by_project_state", ["projectId", "state.kind"]),
+
+  projects: defineTable(projectFields),
 
   nodes: defineTable(
     v.union(
-      v.object({
-        ...commonNodeFields,
-        ...stringNodeFields,
-      }),
-      v.object({
-        ...commonNodeFields,
-        ...folderNodeFields,
-      }),
-      v.object({
-        ...commonNodeFields,
-        ...switchNodeFields,
-      }),
-      v.object({
-        ...commonNodeFields,
-        ...virtualStringNodeFields,
-      }),
+      v.object({ ...owned, ...stringNodeFields }),
+      v.object({ ...owned, ...folderNodeFields }),
+      v.object({ ...owned, ...switchNodeFields }),
+      v.object({ ...owned, ...virtualStringNodeFields }),
     ),
   )
     // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project lists a project's rows in the order they were made, which the editor and the phone show; by_project_key finds one row by key.
     .index("by_project", ["projectId"])
     .index("by_project_key", ["projectId", "key"]),
 
-  sequences: defineTable({
-    name: v.string(),
-    numFrames: v.number(),
-    tracks: v.array(trackValidator),
-    projectId: v.id("projects"),
-    key: v.optional(v.string()),
-  })
+  sequences: defineTable({ ...owned, ...sequenceFields })
     // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project keeps the order rows were made in, which the editor and the phone show; by_project_key finds one row by key.
     .index("by_project", ["projectId"])
     .index("by_project_key", ["projectId", "key"]),
 
-  playlists: defineTable({
-    name: v.string(),
-    sequenceIds: v.array(v.id("sequences")),
-    projectId: v.id("projects"),
-    key: v.optional(v.string()),
-  })
+  playlists: defineTable({ ...owned, ...playlistFields })
     // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project keeps the order rows were made in, which the editor and the phone show; by_project_key finds one row by key.
     .index("by_project", ["projectId"])
     .index("by_project_key", ["projectId", "key"]),
 });
-
-export type NodeDoc = Doc<"nodes">;
-export type NodeDocKinds = NodeDoc["kind"];
-export type NodeDocOfKind<K extends NodeDocKinds> = Extract<
-  NodeDoc,
-  { kind: K }
->;

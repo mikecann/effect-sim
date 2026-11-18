@@ -6,28 +6,28 @@ import {
 import { components, internal } from "./_generated/api";
 import { internalMutation, internalQuery, mutation } from "./_generated/server";
 import { displayControl } from "./displayControl";
+import { hwirPresence } from "./hwirPresence";
+import { mappingSession } from "./mappingSession";
+import { switchState } from "./switchState";
 import schema from "./schema";
 
 // Every state machine in effect-sim (@convex-dev/state-machines, vendored in
 // vendor/). Functions that move a machine use this catalog's builders, whose
-// db can't write a machine's state directly. The editor's own functions
-// (functions.ts) stay on Convex's builders.
+// db can't write a machine's state directly. Public mutations use them through
+// convex/auth.ts, which checks the caller's token first.
 export const machines: Machines<typeof schema> = defineMachines(
   schema,
-  [displayControl],
+  [displayControl, hwirPresence, mappingSession, switchState],
   {
     mutation,
     internalMutation,
     internalQuery,
     deliver: internal.machines.deliver,
     component: components.stateMachines,
-    // Written only by the key migration (convex/migrations.ts) until the
-    // switchState machine takes it.
-    notMachines: ["switchStates.state"],
   },
 );
 
-export { displayControl };
+export { displayControl, hwirPresence, mappingSession, switchState };
 
 // Timers fire through this.
 export const deliver = machines.internalMutation({

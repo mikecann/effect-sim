@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { DatabaseReader, DatabaseWriter } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { findRowProblem } from "./editorSync";
 
 // The Nov 2026 rebuild's data migration (docs/rebuild-plan.md, "Cutover").
 // Run it with `npx convex run migrations:run`, check it with
@@ -127,7 +128,10 @@ const migrateProject = async (
           report.segmentsDropped++;
           return [];
         }
-        const fromIndex = Math.max(0, Math.min(segment.fromIndex, ledCount - 1));
+        const fromIndex = Math.max(
+          0,
+          Math.min(segment.fromIndex, ledCount - 1),
+        );
         const toIndex = Math.max(0, Math.min(segment.toIndex, ledCount - 1));
         if (fromIndex > toIndex) {
           report.segmentsDropped++;
@@ -159,13 +163,15 @@ const migrateProject = async (
           nodeKinds.has(id),
         );
         if (nodeIds.length === event.appliesTo.nodeIds.length) return event;
-        report.appliesToDropped += event.appliesTo.nodeIds.length - nodeIds.length;
+        report.appliesToDropped +=
+          event.appliesTo.nodeIds.length - nodeIds.length;
         tracksChanged = true;
         return { ...event, appliesTo: { kind: "nodes" as const, nodeIds } };
       }),
     }));
     if (tracksChanged) patch.tracks = tracks;
-    if (Object.keys(patch).length > 0) await db.patch("sequences", sequence._id, patch);
+    if (Object.keys(patch).length > 0)
+      await db.patch("sequences", sequence._id, patch);
   }
 
   for (const playlist of playlists) {
@@ -182,7 +188,8 @@ const migrateProject = async (
         playlist.sequenceIds.length - sequenceIds.length;
       patch.sequenceIds = sequenceIds;
     }
-    if (Object.keys(patch).length > 0) await db.patch("playlists", playlist._id, patch);
+    if (Object.keys(patch).length > 0)
+      await db.patch("playlists", playlist._id, patch);
   }
 };
 
@@ -246,13 +253,16 @@ export const check = internalQuery({
         ["playlists", playlists],
       ] as const)
         for (const row of rows)
-          if (row.key === undefined) problems.push(`${table} ${row._id} has no key`);
+          if (row.key === undefined)
+            problems.push(`${table} ${row._id} has no key`);
 
       for (const node of nodes) {
         if (node.parentId !== null) {
           counts.references++;
           if (nodesByKey.get(node.parentId)?.kind !== "folder")
-            problems.push(`node ${node.key}'s parent ${node.parentId} isn't a folder`);
+            problems.push(
+              `node ${node.key}'s parent ${node.parentId} isn't a folder`,
+            );
         }
         if (node.kind === "folder" && node.children !== undefined)
           problems.push(`folder ${node.key} still has children`);
@@ -267,15 +277,30 @@ export const check = internalQuery({
             counts.references++;
             const target = nodesByKey.get(segment.nodeId);
             if (target?.kind !== "string")
-              problems.push(`virtual string ${node.key}'s segment points at ${segment.nodeId}, which isn't a string`);
+              problems.push(
+                `virtual string ${node.key}'s segment points at ${segment.nodeId}, which isn't a string`,
+              );
             else if (
               segment.fromIndex < 0 ||
               segment.toIndex > target.ledCount - 1 ||
               segment.fromIndex > segment.toIndex
             )
-              problems.push(`virtual string ${node.key}'s segment ${segment.fromIndex}-${segment.toIndex} is outside its string's ${target.ledCount} LEDs`);
+              problems.push(
+                `virtual string ${node.key}'s segment ${segment.fromIndex}-${segment.toIndex} is outside its string's ${target.ledCount} LEDs`,
+              );
           }
       }
+
+      // Every row must pass the checks editor.sync makes, or the editor
+      // couldn't save it again unchanged.
+      for (const [table, rows] of [
+        ["nodes", nodes],
+        ["sequences", sequences],
+      ] as const)
+        for (const row of rows) {
+          const problem = findRowProblem(table, row as never);
+          if (problem) problems.push(`${table} ${row.key}: ${problem}`);
+        }
 
       for (const sequence of sequences)
         for (const track of sequence.tracks)
@@ -284,14 +309,18 @@ export const check = internalQuery({
               for (const nodeId of event.appliesTo.nodeIds) {
                 counts.references++;
                 if (!nodesByKey.has(nodeId))
-                  problems.push(`sequence ${sequence.key}'s event ${event.id} applies to missing node ${nodeId}`);
+                  problems.push(
+                    `sequence ${sequence.key}'s event ${event.id} applies to missing node ${nodeId}`,
+                  );
               }
 
       for (const playlist of playlists)
         for (const sequenceId of playlist.sequenceIds) {
           counts.references++;
           if (!sequenceKeys.has(sequenceId))
-            problems.push(`playlist ${playlist.key} lists missing sequence ${sequenceId}`);
+            problems.push(
+              `playlist ${playlist.key} lists missing sequence ${sequenceId}`,
+            );
         }
 
       const control = await ctx.db
