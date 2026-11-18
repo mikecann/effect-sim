@@ -543,12 +543,14 @@ const runGate = async (sha: string): Promise<GateFailure | null> => {
 
   // launchd always runs `bun run hwir`, so a commit that changes what that
   // script runs can't be proven here. It needs a person on the machine.
-  const entry = (dir: string) =>
-    (
-      JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
-        scripts?: Record<string, string>;
-      }
-    ).scripts?.hwir;
+  const entry = (dir: string) => {
+    try {
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      return String(pkg.scripts?.hwir);
+    } catch {
+      return "(unreadable package.json)";
+    }
+  };
   if (entry(stagingDir) !== entry(repo))
     return {
       step: "entry point check",
@@ -666,7 +668,7 @@ log(
   `starting at ${short(head)} (last good ${state.lastGood ? short(state.lastGood) : "none yet"}), ` +
     `auto-update ${autoUpdate ? "on" : "off"}, runtime args: ${childArgs.join(" ") || "(none)"}`,
 );
-if (smoke) 
+if (smoke)
   // Exercise the update check too, short of fetching or changing anything.
   // If it throws, the smoke boot fails.
   await checkForUpdate({ rehearse: true });
