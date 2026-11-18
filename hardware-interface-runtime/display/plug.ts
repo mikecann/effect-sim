@@ -2,10 +2,15 @@
 // with retries, and following it when something else switches it.
 
 /** Waits between tries when switching the plug fails. The last one repeats. */
-export const PLUG_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+export const PLUG_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 45_000];
 
-/** Retrying gives up after this long: a stale request shouldn't land hours later. */
-export const PLUG_RETRY_FOR_MS = 15 * 60_000;
+/**
+ * Retrying gives up once the next try would start later than this. The plug
+ * is the truth for on/off: after giving up, the failure stays in the
+ * heartbeat and the 10 s plug check makes the display follow whatever Home
+ * Assistant says (a 10pm automation can't be outlasted by a stale ON).
+ */
+export const PLUG_RETRY_FOR_MS = 2 * 60_000;
 
 /** How the plug is doing, for the heartbeat and logs. */
 export type PlugStatus =
@@ -42,8 +47,10 @@ type Target = {
  *   from a known state (an automation or someone at the wall, not the plug
  *   coming back online): `onExternal` reports it, so the display follows the
  *   plug instead of fighting it;
- * - `cancel()` was called (the display's on/off moved elsewhere), or it has
- *   retried for PLUG_RETRY_FOR_MS.
+ * - `cancel()` was called (the display's on/off moved elsewhere), or the
+ *   next try would start more than PLUG_RETRY_FOR_MS (2 minutes) after the
+ *   switch began. Then the status stays failing and the plug check follows
+ *   Home Assistant.
  */
 export class PlugSwitcher {
   status: PlugStatus | null = null;
@@ -122,17 +129,17 @@ export class PlugSwitcher {
           this.target = null;
           break;
         }
-        if (this.now() - t.startedAt >= PLUG_RETRY_FOR_MS) {
+        const delay =
+          PLUG_RETRY_DELAYS_MS[
+            Math.min(t.tries - 1, PLUG_RETRY_DELAYS_MS.length - 1)
+          ];
+        if (this.now() + delay - t.startedAt > PLUG_RETRY_FOR_MS) {
           this.target = null;
           break;
         }
         if (this.settledBy(t, await this.read())) break;
         if (this.target !== t) continue;
-        await this.pause(
-          PLUG_RETRY_DELAYS_MS[
-            Math.min(t.tries - 1, PLUG_RETRY_DELAYS_MS.length - 1)
-          ],
-        );
+        await this.pause(delay);
         if (this.target !== t) continue;
         const reading = await this.read();
         if (this.target !== t) continue;

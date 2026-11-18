@@ -27,13 +27,15 @@ export const HeadlessLedDataDispatcher = observer(
     // allocate every frame.
     const [scaled] = useState(() => new Map<string, Uint8Array>());
 
-    // The display settings this tree was rendered with: once the effect has
-    // run, the player for them is mounted, so the next frame shows them.
+    // The display settings this tree was rendered with. When nothing plays
+    // (off, or no playlist) the dispatcher's own black frame is the render;
+    // otherwise only a frame the player has stamped (RenderStamp) counts.
     const version = app.controlVersion;
-    const renderedVersion = useRef(-1);
+    const selfRendered = !(app.isOn && app.playlist);
+    const rendered = useRef({ version: -1, selfRendered: true });
     useEffect(() => {
-      renderedVersion.current = version;
-    }, [version]);
+      rendered.current = { version, selfRendered };
+    }, [version, selfRendered]);
 
     useFrame(() => {
       // Off is brightness 0: keep sending black frames, as WLED goes back to
@@ -48,7 +50,8 @@ export const HeadlessLedDataDispatcher = observer(
             : scale(stringData.data, factor, scaled, key),
         );
       }
-      app.frameShown(renderedVersion.current);
+      const r = rendered.current;
+      app.frameShown(r.selfRendered ? r.version : app.lastRendered());
     });
 
     return null;

@@ -188,19 +188,42 @@ describe("PlugSwitcher", () => {
     expect(await off).toBe(true);
   });
 
-  it("gives up after retrying for a while", async () => {
+  it("gives up after about two minutes, still reporting the failure", async () => {
+    // 9:59pm: the phone asks for ON and Home Assistant keeps failing. The
+    // plug was already off, so the 10pm automation changes nothing HWIR can
+    // see: only the time limit stops a late ON.
     const f = fakePlug(false);
     const first = f.switcher.switchTo(true);
     f.calls[0].finish(false);
     await first;
+    let elapsed = 0;
+    for (let i = 0; i < 20 && f.switcher.busy; i++) {
+      await flush();
+      const wait = f.waits[i];
+      if (!wait) break;
+      f.tick(wait.ms);
+      elapsed += wait.ms;
+      wait.release();
+      await flush();
+      f.calls[i + 1]?.finish(false);
+    }
     await flush();
-    f.tick(PLUG_RETRY_FOR_MS);
-    f.waits[0].release();
-    await flush();
-    f.calls[1].finish(false);
-    await flush();
-    expect(f.waits).toHaveLength(1);
     expect(f.switcher.busy).toBe(false);
+    expect(elapsed).toBeLessThanOrEqual(PLUG_RETRY_FOR_MS);
+    expect(f.calls.length).toBe(PLUG_RETRY_DELAYS_MS.length + 1);
+    expect(f.calls.every((c) => c.on)).toBe(true);
+    expect(f.switcher.status).toMatchObject({ kind: "failing", on: true });
+    // And the follower, now that the switcher isn't busy, adopts the plug.
+    expect(
+      followPlug({
+        status: "live",
+        isOn: true,
+        requestedAt: null,
+        plugOn: false,
+        plugBusy: f.switcher.busy,
+        appliedRequestedAt: null,
+      }),
+    ).toEqual({ kind: "report", isOn: false });
   });
 });
 

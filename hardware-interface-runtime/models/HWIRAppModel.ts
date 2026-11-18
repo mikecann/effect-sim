@@ -20,6 +20,8 @@ export class HWIRAppModel {
   /** Goes up with every setControl; frames say which version they showed. */
   controlVersion = 0;
   private shownVersion = -1;
+  /** The latest control version the player has drawn into the LED data. */
+  private renderedVersion = -1;
   private shownWaiters: { version: number; resolve: () => void }[] = [];
 
   /** Each string's WLED link, by node key (String.tsx makes and closes them). */
@@ -40,13 +42,19 @@ export class HWIRAppModel {
       playlistId: PlaylistKey | null;
     },
   ) {
-    makeAutoObservable<HWIRAppModel, "shownVersion" | "shownWaiters">(this, {
+    makeAutoObservable<
+      HWIRAppModel,
+      "shownVersion" | "shownWaiters" | "renderedVersion"
+    >(this, {
       links: false,
       fpsMeter: false,
       plugStatus: false,
       // Plain bookkeeping read from frames, not rendered.
       shownVersion: false,
       shownWaiters: false,
+      renderedVersion: false,
+      markRendered: false,
+      lastRendered: false,
       frameShown: false,
       whenShown: false,
     });
@@ -112,6 +120,18 @@ export class HWIRAppModel {
   setControl(control: DisplaySettings | null) {
     this.control = control;
     this.controlVersion++;
+  }
+
+  /**
+   * The player's effects have drawn this control version into the LED data
+   * (HeadlessPlaylistPlayer's RenderStamp), so a frame sent from now on shows it.
+   */
+  markRendered(version: number) {
+    if (version > this.renderedVersion) this.renderedVersion = version;
+  }
+
+  lastRendered() {
+    return this.renderedVersion;
   }
 
   /** A frame rendered with this control version has gone out to the strings. */

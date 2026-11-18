@@ -2,8 +2,7 @@ import { observer } from "mobx-react-lite";
 import { ClientDataSocket } from "./ClientDataSocket";
 import { String } from "./String";
 import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
-import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
-import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
+import { Playback } from "./Playback";
 import { HwirFrameProvider } from "./frames/HwirFrameProvider";
 import {
   useDisplayControl,
@@ -46,17 +45,7 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
               sessionId={mappingSessionId}
             />
           ) : (
-            <>
-              {/* Off: nothing plays, and the dispatcher sends black. The key
-                  starts the player over when the remote changes mode. */}
-              {app.isOn && app.playlist ? (
-                <HeadlessPlaylistPlayer
-                  key={app.modeKey}
-                  playlist={app.playlist}
-                />
-              ) : null}
-              <HeadlessLedDataDispatcher app={app} />
-            </>
+            <Playback app={app} />
           )
         ) : runMode === "smoke" ? null : (
           <ClientDataSocket app={app} />

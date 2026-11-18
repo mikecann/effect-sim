@@ -82,6 +82,10 @@ export class HeadlessPlayerModel {
     const sequence = sequences[index];
     this.index = index;
     this.key = sequence.key;
-    this.runtime = new SequenceRuntimeModel(sequence);
+    const runtime = new SequenceRuntimeModel(sequence);
+    // Work out the active effects now, so they mount in the same render as
+    // the runtime and have drawn by the time the player stamps the frame.
+    runtime.updateActiveEffects();
+    this.runtime = runtime;
   }
 }

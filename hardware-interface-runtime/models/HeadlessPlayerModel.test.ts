@@ -6,7 +6,7 @@ import {
 } from "./HeadlessPlayerModel";
 
 const seq = (key: string, numFrames: number) =>
-  ({ key, numFrames }) as unknown as SequenceModel;
+  ({ key, numFrames, trackModels: [] }) as unknown as SequenceModel;
 
 /** A playlist whose sequences the test edits, as the project does live. */
 const editable = (sequences: SequenceModel[]) => {
