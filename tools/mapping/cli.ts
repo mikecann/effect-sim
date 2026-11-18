@@ -492,10 +492,15 @@ program
     "--finish",
     "this was the last viewpoint: the lights go back to playing",
   )
+  .option(
+    "--session <id>",
+    "upload into this session instead of the run's (when the run's lapsed)",
+  )
   .action(async (run: string, opts) => {
     const runDir = resolve(run);
     const manifest = readManifest(runDir);
     const decoded = readDecoded(runDir);
+    const sessionId: string = opts.session ?? manifest.sessionId;
     const mapping = connect();
     try {
       const reference = existsSync(join(runDir, "reference.jpg"))
@@ -508,7 +513,7 @@ program
       const darkPhoto = existsSync(join(runDir, "dark.jpg"))
         ? await mapping.uploadFile(join(runDir, "dark.jpg"), "image/jpeg")
         : undefined;
-      await mapping.addView(manifest.sessionId, {
+      await mapping.addView(sessionId, {
         name: manifest.view,
         uploadedAt: Date.now(),
         photo: photo as Id<"_storage">,
@@ -525,16 +530,34 @@ program
         0,
       );
       log(
-        `Uploaded view "${manifest.view}" (${seen} LEDs seen, photo ${reference}) to session ${manifest.sessionId}.`,
+        `Uploaded view "${manifest.view}" (${seen} LEDs seen, photo ${reference}) to session ${sessionId}.`,
       );
       if (opts.finish) {
         await mapping.mutate(api.mapping.captured, {
-          sessionId: manifest.sessionId,
+          sessionId: sessionId,
         });
         log(
           "Capture finished: the session is solving, the lights are back to playing. Hand over to the editor's review.",
         );
       }
+    } finally {
+      await mapping.close();
+    }
+  });
+
+program
+  .command("start")
+  .description(
+    "Start (or join) the project's session without capturing, e.g. to aim the camera with show",
+  )
+  .requiredOption("--project <id>")
+  .action(async ({ project }) => {
+    const mapping = connect();
+    try {
+      const { sessionId, joined } = await mapping.startOrJoin(project);
+      log(
+        `${joined ? "Joined" : "Started"} session ${sessionId}. Light patterns with show; it lapses after 10 idle minutes.`,
+      );
     } finally {
       await mapping.close();
     }
