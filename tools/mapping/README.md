@@ -16,7 +16,7 @@ The lights show a sequence of patterns (through a Convex mapping session; HWIR o
 1. Check out the branch with the tool and HWIR's mapping mode, `bun install`.
 2. `tools/mapping/setup.sh` makes the Python venv (`tools/mapping/.venv`, OpenCV and numpy) and builds the camera helper (`tools/mapping/.bin/snap`). It lists the cameras it can see.
 3. **Camera permission.** The helper runs as its own app, "effect-sim mapping camera", so macOS asks once for the camera. Run `printf 'lock\nsnap /tmp/test.jpg 300\nquit\n' | tools/mapping/.bin/snap --device <index>` and have Mike click Allow if a prompt appears (System Settings > Privacy & Security > Camera otherwise). The `lock` line in its answer says whether that camera can lock exposure, focus and white balance. The MacBook Pro's own camera can't (tested 18 Nov 2026: 1920×1080, all three `unsupported`). Check the iPhone too.
-4. **Convex.** The tool uses `CONVEX_URL`, else `VITE_CONVEX_URL` from the repo's `.env.local`. Mapping runs against production, so on the night that's `aromatic-cardinal-985` after the cutover. Put `EDITOR_TOKEN` in the environment or `.env.local` (the same value as the deployment's `EDITOR_TOKEN`).
+4. **Convex.** The tool uses `CONVEX_URL`, else `VITE_CONVEX_URL` from the repo's `.env.local`. Mapping runs against production, so on the night that's `aromatic-cardinal-985` after the cutover. Put `EDITOR_TOKEN` in the environment or `.env.local` (the same value as the deployment's `EDITOR_TOKEN`). Every command that changes a session (`capture`, `verify`, `upload`, `start`, `show`, `finish`, `discard`) prints the deployment first and refuses a cloud one unless you pass `--prod`, so production's lights are never switched by accident. The synthetic camera refuses anything but a local backend, even with `--prod`.
 5. **Project id.** `bun tools/mapping/cli.ts status --project <id>` (the house is `jh7evn9abjw0qyv96xvzk21nd97w8cjw`). It shows HWIR's heartbeat, the display (on/off, brightness), the session and every string's connection.
 
 ## Cameras
@@ -45,6 +45,8 @@ A camera has to see an LED to place it. The strings run round all four sides of 
 Every string should be wholly visible from at least one view; an LED seen in two views gives the editor a cross-check. All viewpoints go into the same session, each with its own `--view` name. Stand far enough back that the strings for that view fill most of the frame, no further.
 
 ## On the night, in order
+
+Against production, add `--prod` to every command below except `status` and `decode`.
 
 Start about 30–40 minutes after sunset: dark enough for the LEDs to stand out, light enough that the reference photo shows the house's edges for lining up in the editor.
 
@@ -101,7 +103,7 @@ The session ends in `solving` with `views` on its row. The editor's review UI re
 
 `u` runs across from the left edge and `v` down from the top, both 0..1, with pixel centres at `(x + 0.5) / width`. `confidence` is 0..1: measured points are at least 0.3 (0.9 for ones `verify --fill` lit one at a time); below 0.25 means interpolated between neighbours, not seen. `null` means not seen from this view.
 
-The editor lines its 3D camera up with each view's photo, raycasts the points onto the house, merges views per LED by confidence, and sends `SOLVED { proposed }` (→ review), then `APPLY` writes `ledPositions`. `RECAPTURE` from solving or review goes back to capturing; the views stay until replaced.
+The editor lines its 3D camera up with each view's photo, raycasts the points onto the house, merges views per LED by confidence, and sends `SOLVED { proposed }` (→ review), then `APPLY` writes `ledPositions`. `RECAPTURE` from solving or review goes back to capturing and puts the display back into mapping mode; the views stay until replaced. A daily cron (`convex/crons.ts`) deletes the photos of discarded sessions and any upload no view has held for a day; `upload` checks the session takes views before uploading, and deletes its photos again if attaching them fails.
 
 ## Checking the tool itself
 

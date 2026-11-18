@@ -34,6 +34,8 @@ import { PyWorker, runDecode, toolDir } from "./lib/python";
 import { ensure } from "../../shared/ensure";
 import { makeScene, type HouseString, type Scene } from "./lib/scene";
 import { ConvexMapping } from "./lib/session";
+import { checkWrites } from "./lib/deployment";
+import { uploadView } from "./lib/upload";
 
 // The deployment comes from CONVEX_URL, or VITE_CONVEX_URL in the repo's
 // .env.local (what `npx convex dev` selected). The editor token from
@@ -62,6 +64,24 @@ const connect = () =>
     convexUrl(),
     process.env.EDITOR_TOKEN ?? envLocal.EDITOR_TOKEN,
   );
+
+/** connect(), for commands that change a session: says which deployment, and
+ *  refuses a cloud one without --prod (and with a fake camera at all). */
+const connectForWrites = (opts: { prod?: boolean; camera?: string }) => {
+  log(
+    checkWrites(convexUrl(), {
+      prod: opts.prod,
+      fake: opts.camera?.startsWith("synthetic")
+        ? "synthetic camera"
+        : undefined,
+    }),
+  );
+  return connect();
+};
+const prodOption = [
+  "--prod",
+  "allow changing a session on a cloud deployment (production: the real lights)",
+] as const;
 
 const log = (line: string) => console.log(line);
 const ago = (t: number | undefined) =>
@@ -236,8 +256,9 @@ program
     "take a session in solving or review back to capturing",
   )
   .option("--force", "capture even when the preflight finds problems")
+  .option(...prodOption)
   .action(async (opts) => {
-    const mapping = connect();
+    const mapping = connectForWrites(opts);
     const py = new PyWorker();
     let camera: Camera | undefined;
     try {
@@ -324,11 +345,15 @@ program
   )
   .option("--max <n>", "most LEDs --fill lights", "60")
   .option("--settle <ms>", "", "400")
+  .option(...prodOption)
   .action(async (run: string, opts) => {
     const runDir = resolve(run);
     const manifest = readManifest(runDir);
     const decoded = readDecoded(runDir);
-    const mapping = connect();
+    const mapping = connectForWrites({
+      prod: opts.prod,
+      camera: opts.camera ?? manifest.camera,
+    });
     const py = new PyWorker();
     let camera: Camera | undefined;
     try {
@@ -496,34 +521,22 @@ program
     "--session <id>",
     "upload into this session instead of the run's (when the run's lapsed)",
   )
+  .option(...prodOption)
   .action(async (run: string, opts) => {
     const runDir = resolve(run);
     const manifest = readManifest(runDir);
     const decoded = readDecoded(runDir);
     const sessionId: string = opts.session ?? manifest.sessionId;
-    const mapping = connect();
+    const mapping = connectForWrites({
+      prod: opts.prod,
+      camera: manifest.camera,
+    });
     try {
-      const reference = existsSync(join(runDir, "reference.jpg"))
-        ? "reference.jpg"
-        : "all.jpg";
-      const photo = await mapping.uploadFile(
-        join(runDir, reference),
-        "image/jpeg",
-      );
-      const darkPhoto = existsSync(join(runDir, "dark.jpg"))
-        ? await mapping.uploadFile(join(runDir, "dark.jpg"), "image/jpeg")
-        : undefined;
-      await mapping.addView(sessionId, {
-        name: manifest.view,
-        uploadedAt: Date.now(),
-        photo: photo as Id<"_storage">,
-        ...(darkPhoto ? { darkPhoto: darkPhoto as Id<"_storage"> } : {}),
-        imageWidth: decoded.imageWidth,
-        imageHeight: decoded.imageHeight,
-        strings: decoded.strings.map((s) => ({
-          nodeKey: s.key,
-          points: s.points,
-        })),
+      const { reference } = await uploadView(mapping, {
+        runDir,
+        sessionId,
+        manifest,
+        decoded,
       });
       const seen = decoded.strings.reduce(
         (a, s) => a + s.points.filter((p) => p && p.confidence >= 0.3).length,
@@ -551,8 +564,9 @@ program
     "Start (or join) the project's session without capturing, e.g. to aim the camera with show",
   )
   .requiredOption("--project <id>")
-  .action(async ({ project }) => {
-    const mapping = connect();
+  .option(...prodOption)
+  .action(async ({ project, prod }) => {
+    const mapping = connectForWrites({ prod });
     try {
       const { sessionId, joined } = await mapping.startOrJoin(project);
       log(
@@ -569,8 +583,9 @@ program
     "End the project's capture (session → solving) without uploading",
   )
   .requiredOption("--project <id>")
-  .action(async ({ project }) => {
-    const mapping = connect();
+  .option(...prodOption)
+  .action(async ({ project, prod }) => {
+    const mapping = connectForWrites({ prod });
     try {
       const active = await mapping.active(project);
       if (active?.state.kind !== "capturing")
@@ -590,8 +605,9 @@ program
     "Give up on the project's session (the lights go back to playing)",
   )
   .requiredOption("--project <id>")
-  .action(async ({ project }) => {
-    const mapping = connect();
+  .option(...prodOption)
+  .action(async ({ project, prod }) => {
+    const mapping = connectForWrites({ prod });
     try {
       const active = await mapping.active(project);
       if (!active) throw new Error("No active session.");
@@ -608,8 +624,9 @@ program
     "Light one pattern in the capturing session (off, all, string:<ref>, led:<ref>:<i>, bit:<n>[:inv]), to aim the camera",
   )
   .requiredOption("--project <id>")
-  .action(async (pattern: string, { project }) => {
-    const mapping = connect();
+  .option(...prodOption)
+  .action(async (pattern: string, { project, prod }) => {
+    const mapping = connectForWrites({ prod });
     try {
       const active = await mapping.active(project);
       if (active?.state.kind !== "capturing")

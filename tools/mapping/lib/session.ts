@@ -129,6 +129,12 @@ export class ConvexMapping {
     });
   }
 
+  deleteUnattached(storageIds: string[]) {
+    return this.mutate(api.mapping.deleteUnattached, {
+      storageIds: storageIds as Id<"_storage">[],
+    });
+  }
+
   close() {
     return this.client.close();
   }
