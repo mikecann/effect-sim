@@ -56,13 +56,14 @@ export const useProjectModel = (model: HWIRAppModel) => {
     if (!projectDoc) return;
     model.project.updateSettings(projectDoc.settings);
     model.project.setName(projectDoc.name);
-  }, [model.project, projectDoc]);
+  }, [model, model.project, projectDoc]);
 
   useEffect(() => {
     if (!model.project) return;
     if (!projectData) return;
     model.project.updateFromServerData(projectData);
-  }, [model.project, projectData]);
+    model.setDataLoaded();
+  }, [model, model.project, projectData]);
 };
 
 /**

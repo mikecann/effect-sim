@@ -24,6 +24,9 @@ export class HWIRAppModel {
   // HWStringModel, which is rebuilt whenever the project's strings change.
   connections = new Map<NodeKey, StringConnection>();
 
+  /** The project's nodes, sequences and playlists have arrived from Convex. */
+  dataLoaded = false;
+
   constructor(
     public readonly startupSettings: {
       projectId: Id<"projects">;
@@ -107,6 +110,10 @@ export class HWIRAppModel {
 
   setConnection(key: NodeKey, connection: StringConnection) {
     this.connections.set(key, connection);
+  }
+
+  setDataLoaded() {
+    this.dataLoaded = true;
   }
 
   setProject(project: ProjectModel) {

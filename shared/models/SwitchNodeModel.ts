@@ -3,9 +3,11 @@ import type { Icon } from "./types";
 import { ProjectModel } from "./ProjectModel";
 import type { NodeDocOfKind } from "./docs";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
+import { outsideWorldBlocked, reachOut } from "../outsideWorld";
 
-export interface SwitchNodeModel
-  extends WithAutoSetters<NodeDocOfKind<"switch">> {}
+export interface SwitchNodeModel extends WithAutoSetters<
+  NodeDocOfKind<"switch">
+> {}
 
 export class SwitchNodeModel {
   /**
@@ -56,6 +58,15 @@ export class SwitchNodeModel {
     return `http://${ip}/switch/smart_plug_v2`;
   }
 
+  /** Null when the outside world is blocked (HWIR dry runs). */
+  private request(url: string, method: "GET" | "POST") {
+    return reachOut<Promise<Response | null>>(
+      `calling switch '${this.name}' ${method} ${url}`,
+      () => fetch(url, { method }),
+      Promise.resolve(null),
+    );
+  }
+
   private get reporter() {
     return this.project.switchReporter;
   }
@@ -67,11 +78,14 @@ export class SwitchNodeModel {
       return;
     }
 
+    if (outsideWorldBlocked()) {
+      this.request(`${this.baseUrl}/${action}`, "POST");
+      return;
+    }
     this.reporter?.switching(this.key, on);
     try {
-      const response = await fetch(`${this.baseUrl}/${action}`, {
-        method: "POST",
-      });
+      const response = await this.request(`${this.baseUrl}/${action}`, "POST");
+      if (!response) return;
       if (!response.ok)
         throw new Error(
           `Failed to ${action.replace("_", " ")} switch at ${this.ipAddress}: ${response.statusText}`,
@@ -107,7 +121,8 @@ export class SwitchNodeModel {
 
     let isOn: boolean;
     try {
-      const response = await fetch(url, { method: "GET" });
+      const response = await this.request(url, "GET");
+      if (!response) return;
       if (!response.ok)
         throw new Error(
           `Failed to refresh switch status at ${this.ipAddress}: ${response.statusText}`,

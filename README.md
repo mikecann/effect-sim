@@ -116,7 +116,7 @@ effect-sim/
 │   └── models/          # Shared MobX models (data layer)
 ├── hardware-interface-runtime/  # Headless runtime for hardware control
 │   ├── models/          # Runtime-specific models
-│   └── updateAndRestart.ts  # Auto-update logic
+│   └── supervisor.ts    # Runs the runtime and applies safe updates
 └── public/              # Static assets (3D models, etc.)
 ```
 
@@ -188,24 +188,7 @@ bun run hwir -p <projectId> -l <playlistId>
 
 ### Auto-Update System
 
-Enable automatic updates to keep HWIR up-to-date:
-
-```bash
-# Enable auto-updates
-export HWIR_AUTO_UPDATE=true
-bun run hwir
-
-# Or on Windows PowerShell
-$env:HWIR_AUTO_UPDATE="true"
-bun run hwir
-```
-
-When enabled:
-
-- Checks git for updates every 1 minute
-- Automatically pulls, installs deps, and restarts
-- Preserves your project/playlist selection across restarts
-- Only updates when working directory is clean
+`bun run hwir` starts a small supervisor that runs the runtime and, with `HWIR_AUTO_UPDATE=true` (in `.env.local`), keeps it on the latest `main`. It only fast-forwards, checks every new commit before switching to it, and rolls back if the runtime crash-loops afterwards. See [hardware-interface-runtime/README.md](hardware-interface-runtime/README.md).
 
 ### macOS Launch Agent Setup
 

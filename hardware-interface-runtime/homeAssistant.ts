@@ -1,4 +1,5 @@
 import { logger } from "./utils/logger";
+import { reachOut } from "../shared/outsideWorld";
 
 // The display's mains power is a smart plug in Home Assistant ("Xmas Lights
 // Plug - Main"). With these set in .env.local, the remote's on/off switches
@@ -10,7 +11,15 @@ const entityId = process.env.HA_PLUG_ENTITY;
 
 export const plugConfigured = Boolean(url && token && entityId);
 
-const call = async (method: string, path: string, body?: unknown) => {
+/** Resolves to null when the outside world is blocked (dry runs). */
+const call = (method: string, path: string, body?: unknown) =>
+  reachOut(
+    `calling Home Assistant ${method} ${path}`,
+    () => send(method, path, body),
+    Promise.resolve(null),
+  );
+
+const send = async (method: string, path: string, body?: unknown) => {
   const res = await fetch(`${url}${path}`, {
     method,
     headers: {
@@ -29,7 +38,8 @@ const call = async (method: string, path: string, body?: unknown) => {
 export const readPlug = async (): Promise<boolean | null> => {
   const state = (await call("GET", `/api/states/${entityId}`)) as {
     state: string;
-  };
+  } | null;
+  if (!state) return null;
   if (state.state === "on") return true;
   if (state.state === "off") return false;
   return null; // "unavailable" or "unknown"

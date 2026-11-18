@@ -2,6 +2,7 @@ import dgram from "dgram";
 import { WLEDClient } from "wled-client";
 import { iife } from "../../shared/misc";
 import { logger } from "../utils/logger";
+import { reachOut } from "../../shared/outsideWorld";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(value, max));
@@ -97,6 +98,19 @@ export const createAndConnectWLEDDDP = async ({
   port: number;
   signal?: AbortSignal;
 }) => {
+  // Dry runs get a connection that goes nowhere: no UDP, no WLED JSON calls.
+  const blocked = reachOut(
+    `connecting to WLED or sending DDP to ${host}:${port}`,
+    () => false,
+    true,
+  );
+  if (blocked)
+    return {
+      async send(_rgbBytes: Uint8Array) {},
+      async setBrightness(_brightness: number) {},
+      async close() {},
+    };
+
   const { socket, client } = await connectWLEDDDP({ host, port, signal });
 
   let isClosedOrClosing = false;
