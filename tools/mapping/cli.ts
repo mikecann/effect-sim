@@ -421,11 +421,53 @@ program
         );
       }
 
+      // Single LEDs are compared with a fresh all-off frame, not the run's
+      // dark frame: a phone that can't lock exposure sets the same exposure
+      // for both nearly dark scenes, but not for the dark frame taken right
+      // after the all-on one.
+      let ledDark: string | undefined;
+      // Where LED i of a string can be: between its nearest measured
+      // neighbours, with room for how far apart they are.
+      const nearOf = (key: string, i: number) => {
+        const pts = decoded.strings.find((x) => x.key === key)?.points ?? [];
+        const ok = (p: (typeof pts)[number]) => p && p.confidence >= 0.3;
+        let a = i - 1;
+        while (a >= 0 && !ok(pts[a])) a--;
+        let b = i + 1;
+        while (b < pts.length && !ok(pts[b])) b++;
+        const pa = a >= 0 ? pts[a] : null;
+        const pb = b < pts.length ? pts[b] : null;
+        // Typical spacing between neighbouring LEDs in the image (u units,
+        // scaled to the long side).
+        const aspect = decoded.imageHeight / decoded.imageWidth;
+        const gaps: number[] = [];
+        for (let k = 1; k < pts.length; k++) {
+          const p = pts[k - 1], q = pts[k];
+          if (ok(p) && ok(q))
+            gaps.push(Math.hypot(p!.u - q!.u, (p!.v - q!.v) * aspect));
+        }
+        gaps.sort((x, y) => x - y);
+        const step = gaps.length ? gaps[gaps.length >> 1] : 0.01;
+        if (pa && pb) {
+          const t = (i - a) / (b - a);
+          const half = Math.hypot(pa.u - pb.u, (pa.v - pb.v) * aspect) / 2;
+          return {
+            u: pa.u + (pb.u - pa.u) * t,
+            v: pa.v + (pb.v - pa.v) * t,
+            radius: half + step * 4,
+          };
+        }
+        const p = pa ?? pb;
+        if (!p) return undefined;
+        return { u: p.u, v: p.v, radius: step * (Math.abs(i - (pa ? a : b)) + 4) };
+      };
       const measure = async (key: string, name: string, i: number) => {
+        ledDark ??= await shot({ kind: "off" }, "off");
         const res = await py.call<{
           blobs: { u: number; v: number; weight: number }[];
         }>("locate", {
-          dark,
+          near: nearOf(key, i),
+          dark: ledDark,
           frame: await shot(
             { kind: "led", nodeKey: key, index: i },
             `led-${name}-${i}`,

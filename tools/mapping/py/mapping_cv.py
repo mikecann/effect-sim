@@ -33,6 +33,7 @@ MAX_DECODE_SIDE = 4096
 # A pixel counts as lit when its brightening over the dark frame stands this
 # many noise sigmas above the background (and at least MIN_SIGNAL levels).
 NOISE_SIGMAS = 6.0
+COOL_RED_WEIGHT = float(os.environ.get("MAPPING_COOL_RED_WEIGHT", "0.6"))
 MIN_SIGNAL = 8.0
 
 # A pixel's code is trusted when every bit's normal/inverted contrast is at
@@ -56,7 +57,15 @@ def read_gray(path: str, scale: float = 1.0) -> np.ndarray:
     img = cv2.imread(path, cv2.IMREAD_COLOR)
     if img is None:
         raise SystemExit(f"Can't read image {path}")
-    gray = img.max(axis=2).astype(np.float32)
+    if os.environ.get("MAPPING_CHANNEL") == "cool":
+        # Only light bluer than warm white: the smart LEDs' white has as much
+        # blue as red, warm-white fairy lights (which may twinkle) have far
+        # less, so they drop out. Differences stay linear, so the decode
+        # works the same; warm changes go negative and are clipped later.
+        f = img.astype(np.float32)
+        gray = f[:, :, 0] - COOL_RED_WEIGHT * f[:, :, 2]
+    else:
+        gray = img.max(axis=2).astype(np.float32)
     if scale != 1.0:
         gray = cv2.resize(
             gray,
@@ -111,6 +120,30 @@ class Detection:
     confidence: float
     weakest_bit: int = 0
     rescued: bool = False
+
+
+def normalise_exposure(frames: dict[str, np.ndarray]) -> dict[str, float]:
+    """A phone that can't lock exposure brightens frames with few LEDs lit
+    and dims the busy ones. Lights that never change (other Christmas lights,
+    lit windows) show it: they're bright in the dark frame, so each frame is
+    scaled so they match the dark frame again. Skipped when there's too little
+    of that to measure (a synthetic or truly dark scene)."""
+    if os.environ.get("MAPPING_EXPOSURE_NORMALISE", "1") == "0":
+        return {}
+    dark = frames["dark"]
+    ref = (dark > 40) & (dark < 230)
+    if ref.sum() < 500:
+        return {}
+    gains = {}
+    for name, f in frames.items():
+        if name == "dark":
+            continue
+        ok = ref & (f < 250)
+        gain = float(np.median(f[ok] / dark[ok])) if ok.sum() >= 500 else 1.0
+        if 0.5 < gain < 2.0 and abs(gain - 1) > 0.01:
+            frames[name] = f / gain
+        gains[name] = round(gain, 3)
+    return gains
 
 
 def decode_pixels(frames: dict[str, np.ndarray], bits: int):
@@ -311,6 +344,7 @@ def decode_run(run_dir: str, out_name: str = "decoded.json") -> dict:
     width, height = image_size(files["all"])
     scale = min(1.0, MAX_DECODE_SIDE / max(width, height))
     frames = {n: read_gray(files[n], scale) for n in needed}
+    gains = normalise_exposure(frames)
     h, w = frames["all"].shape
 
     detections, rejected, signal = find_leds(frames, bits, total)
@@ -459,25 +493,42 @@ def check_pair(dark: str, all_on: str, normal: str, inverted: str) -> dict:
     return {"explained": float(explained), "lit": int(mask.sum())}
 
 
-def locate(dark: str, frame: str, expect: list[dict] | None = None, debug: str | None = None) -> dict:
+def locate(dark: str, frame: str, expect: list[dict] | None = None, debug: str | None = None, near: dict | None = None) -> dict:
     """Lit blobs in a frame (single-LED or single-string patterns), compared
     with where the decode put those LEDs."""
     d = read_gray(dark)
     f = read_gray(frame)
     h, w = f.shape
+    # Match the frame's exposure to the reference's on the lights that never
+    # change, for phones that can't lock exposure.
+    gains = normalise_exposure({"dark": d, "frame": f})
+    if gains.get("frame", 1.0) != 1.0 and 0.5 < gains["frame"] < 2.0:
+        f = f / gains["frame"]
     signal = np.clip(blur(f, 1.0) - blur(d, 1.0), 0, None)
     mask, _ = lit_mask(signal)
     n, labels, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+    # Weighted centroids for every blob in one pass.
+    lab = labels.ravel()
+    wts = np.where(mask, signal, 0).ravel().astype(np.float64)
+    ys, xs = np.indices((h, w))
+    sw = np.bincount(lab, wts, n)
+    sx = np.bincount(lab, wts * xs.ravel(), n)
+    sy = np.bincount(lab, wts * ys.ravel(), n)
     blobs = []
     for k in range(1, n):
-        ys, xs = np.nonzero(labels == k)
-        wts = signal[ys, xs]
+        if sw[k] <= 0:
+            continue
         blobs.append({
-            "x": float((xs * wts).sum() / wts.sum()),
-            "y": float((ys * wts).sum() / wts.sum()),
-            "weight": float(wts.sum()),
-            "pixels": int(len(xs)),
+            "x": float(sx[k] / sw[k]),
+            "y": float(sy[k] / sw[k]),
+            "weight": float(sw[k]),
+            "pixels": int(stats[k, cv2.CC_STAT_AREA]),
         })
+    if near:
+        # Only where this LED can be (between its string's neighbours), so
+        # twinkling lights and windows elsewhere don't count.
+        cx, cy, r = near["u"] * w, near["v"] * h, near["radius"] * max(w, h)
+        blobs = [b for b in blobs if (b["x"] - cx) ** 2 + (b["y"] - cy) ** 2 <= r * r]
     blobs.sort(key=lambda b: -b["weight"])
     for b in blobs:
         b["u"], b["v"] = (b["x"] + 0.5) / w, (b["y"] + 0.5) / h
@@ -559,7 +610,7 @@ def worker() -> None:
     handlers = {
         "change": lambda a: check_change(a["prev"], a["cur"]),
         "pair": lambda a: check_pair(a["dark"], a["all"], a["normal"], a["inverted"]),
-        "locate": lambda a: locate(a["dark"], a["frame"], a.get("expect"), a.get("debug")),
+        "locate": lambda a: locate(a["dark"], a["frame"], a.get("expect"), a.get("debug"), a.get("near")),
         "render": lambda a: render(a["scene"], a["lit"], a["out"], a.get("seed", 0), a.get("reference", False)),
         "size": lambda a: dict(zip(("width", "height"), image_size(a["file"]))),
     }
