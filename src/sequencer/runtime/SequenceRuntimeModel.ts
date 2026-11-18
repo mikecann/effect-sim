@@ -37,9 +37,9 @@ export class SequenceRuntimeModel {
     }
 
     const currentFrame = this.playhead.frame;
-    // On the frame jumped to, events that already ended play too, so their
-    // replay leaves the LEDs as playing would have (useEffectFrame stops
-    // each at its last frame). From the next frame they drop out.
+    // On the frame jumped to, string events that already ended play too, so
+    // their replay leaves the LEDs as playing would have (useEffectFrame
+    // stops each at its last frame). From the next frame they drop out.
     const replaying = this.replayFrame === currentFrame;
     const newActiveEventIds = new Set<string>();
 
@@ -47,7 +47,9 @@ export class SequenceRuntimeModel {
       for (const event of track.events)
         if (
           currentFrame >= event.startFrame &&
-          (currentFrame < event.endFrame || replaying)
+          (currentFrame < event.endFrame ||
+            // Never switches: replaying one would call a real plug again.
+            (replaying && event.kind === "string_effect"))
         )
           newActiveEventIds.add(event.id);
 

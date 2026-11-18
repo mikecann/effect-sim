@@ -413,6 +413,47 @@ describe("editor.sync", () => {
       );
     });
 
+    test("effect frames outside the sequence, and too many frames", async () => {
+      const { sync } = await setup();
+      const withEvent = (
+        startFrame: number,
+        endFrame: number,
+        numFrames = 100,
+      ) => {
+        const base = sequence([]);
+        return {
+          ...base,
+          numFrames,
+          tracks: base.tracks.map((t) => ({
+            ...t,
+            events: t.events.map((e) => ({ ...e, startFrame, endFrame })),
+          })),
+        };
+      };
+      const docs = [
+        withEvent(-100_000_000, 10),
+        withEvent(10, 10),
+        withEvent(0, 101),
+        withEvent(0.5, 10),
+        withEvent(0, 10, 300_000),
+      ];
+      const result = await sync(
+        docs.map((doc, i) => ({
+          table: "sequences" as const,
+          op: "create" as const,
+          key: `q${i}`,
+          doc,
+        })),
+      );
+      expect(result.rejected.map((r) => r.reason)).toEqual([
+        "An effect runs from frame -100000000 to 10: it needs whole frames with 0 <= start < end <= 100.",
+        "An effect runs from frame 10 to 10: it needs whole frames with 0 <= start < end <= 100.",
+        "An effect runs from frame 0 to 101: it needs whole frames with 0 <= start < end <= 100.",
+        "An effect runs from frame 0.5 to 10: it needs whole frames with 0 <= start < end <= 100.",
+        "A sequence has 1 to 216000 frames, not 300000.",
+      ]);
+    });
+
     test("an LED spacing the layout can't use", async () => {
       const { sync } = await setup();
       const result = await sync(

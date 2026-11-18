@@ -58,7 +58,9 @@ export const LIMITS = {
   tracks: 500,
   eventsPerTrack: 5000,
   appliesTo: 1000,
-  numFrames: 1_000_000,
+  // 30 minutes at 120 fps. An effect that starts part-way through replays
+  // from its event's start (shared/effects/api.ts), so frames stay bounded.
+  numFrames: 216_000,
   sequenceIds: 1000,
 };
 
@@ -165,7 +167,10 @@ export const findRowProblem = (
 
   if (table === "sequences") {
     const sequence = doc as SequenceFields;
-    if (!(sequence.numFrames >= 1 && sequence.numFrames <= LIMITS.numFrames))
+    if (
+      !Number.isInteger(sequence.numFrames) ||
+      !(sequence.numFrames >= 1 && sequence.numFrames <= LIMITS.numFrames)
+    )
       return `A sequence has 1 to ${LIMITS.numFrames} frames, not ${sequence.numFrames}.`;
     const problem =
       tooLong("The name", sequence.name, LIMITS.name) ??
@@ -178,6 +183,16 @@ export const findRowProblem = (
         tooMany("effects on one track", track.events, LIMITS.eventsPerTrack);
       if (trackProblem) return trackProblem;
       for (const event of track.events) {
+        if (
+          !Number.isInteger(event.startFrame) ||
+          !Number.isInteger(event.endFrame) ||
+          !(
+            event.startFrame >= 0 &&
+            event.startFrame < event.endFrame &&
+            event.endFrame <= sequence.numFrames
+          )
+        )
+          return `An effect runs from frame ${event.startFrame} to ${event.endFrame}: it needs whole frames with 0 <= start < end <= ${sequence.numFrames}.`;
         const problem =
           tooLong("An effect's id", event.id, LIMITS.id) ??
           tooLong("An effect's name", event.effectDefinitionId, LIMITS.id) ??
