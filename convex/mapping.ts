@@ -94,11 +94,36 @@ export const start = editorMutation({
 
 const sessionArgs = { sessionId: v.id("mappingSessions") };
 
+/** Most runs one `ranges` pattern may light (the session row holds it). */
+export const MAX_PATTERN_RANGES = 200;
+
 /** The camera wants this pattern next. */
 export const show = editorMutation({
   args: { ...sessionArgs, pattern: mappingPatternValidator },
-  handler: async (ctx, { sessionId, pattern }) =>
-    await mappingSession.send(ctx, sessionId, { type: "SHOW", pattern }),
+  handler: async (ctx, { sessionId, pattern }) => {
+    if (pattern.kind === "ranges") {
+      if (pattern.ranges.length > MAX_PATTERN_RANGES)
+        throw new ConvexError({
+          code: "NOT_ACCEPTED",
+          message: `A pattern lights at most ${MAX_PATTERN_RANGES} ranges.`,
+        });
+      for (const r of pattern.ranges)
+        if (
+          !Number.isInteger(r.from) ||
+          !Number.isInteger(r.to) ||
+          r.from < 0 ||
+          r.to < r.from
+        )
+          throw new ConvexError({
+            code: "NOT_ACCEPTED",
+            message: `Range ${r.from}-${r.to} of ${r.nodeKey} isn't a run of LED indexes.`,
+          });
+    }
+    return await mappingSession.send(ctx, sessionId, {
+      type: "SHOW",
+      pattern,
+    });
+  },
 });
 
 /** HWIR has sent pattern `seq` out to the strings. */

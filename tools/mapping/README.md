@@ -61,25 +61,42 @@ Start about 30–40 minutes after sunset: dark enough for the LEDs to stand out,
    - each string's line runs where that string is on the house, indexes increasing the right way;
    - no line jumps across the house (a jump means a wrong point that got through: verify those LEDs);
    - "missing" counts match what's really hidden from this view.
-5. Spot-check while the session is still capturing:
+5. Fill the gaps while the session is still capturing (see "Filling gaps"):
+   ```
+   bun tools/mapping/cli.ts verify <run> --fill-blocks all
+   ```
+   Then open `<run>/debug-blocks.jpg`: the same picture as `debug.jpg`, with the filled points in.
+6. Spot-check:
    ```
    bun tools/mapping/cli.ts verify <run> --string 3 7 --led 3:0,50,100,195
    ```
-   `--string` lights one string and checks the decoded points are lit and the lit light is on them; `--led` lights single LEDs and reports how far each decoded point is from where it lights (OK within about 3 px). Use `--fill <string...>` to light each missing or interpolated LED of those strings one at a time (about 1 s each, `--max` caps it, default 60): ones that light are measured at confidence 0.9, ones that don't are hidden from this view and left empty.
-6. Upload the view: `bun tools/mapping/cli.ts upload <run>`. It stores `reference.jpg` and `dark.jpg` in Convex file storage and adds the view to the session. The session stays capturing.
-7. Move the tripod to the next viewpoint and repeat 3–6 with a new `--view` name. `capture` joins the session that's already capturing.
-8. After the last view: `bun tools/mapping/cli.ts upload <run> --finish` (or `finish --project $P`). The session goes to `solving` and the lights go back to their playlist.
+   `--string` lights one string and checks the decoded points are lit and the lit light is on them; `--led` lights single LEDs and reports how far each decoded point is from where it lights (OK within about 3 px). Use `--fill <string...>` to light each missing or interpolated LED of those strings one at a time (about 1 s each, `--max` caps it, default 60): ones that light are measured at confidence 0.9, ones that don't are hidden from this view and left empty. On the house the twinkling icicle lights beat single LEDs, so prefer `--fill-blocks`.
+7. Upload the view: `bun tools/mapping/cli.ts upload <run>`. It stores `reference.jpg` and `dark.jpg` in Convex file storage and adds the view to the session. The session stays capturing.
+8. Move the tripod to the next viewpoint and repeat 3–7 with a new `--view` name. `capture` joins the session that's already capturing.
+9. After the last view: `bun tools/mapping/cli.ts upload <run> --finish` (or `finish --project $P`). The session goes to `solving` and the lights go back to their playlist.
 
 A session with nothing happening for 10 minutes is abandoned (the lights go back). Every pattern resets that clock, so keep moving or re-run `show all`. If it does lapse, `capture` starts a new session; re-upload the earlier views into it with `upload <run> --session <new id>` (`status` shows the id).
 
 To give up: `bun tools/mapping/cli.ts discard --project $P`.
+
+## Filling gaps
+
+The bit patterns leave gaps where glows crowd together and at string ends (on 18 Nov 2026 about 1,050–1,100 of 1,764 LEDs decoded from the jetty). `verify <run> --fill-blocks <strings...|all>` fills them a block of LEDs at a time with the `ranges` pattern:
+
+- Each gap is lit 8 LEDs at a time (`--block`), working in from the placed LEDs at either end, so a block is looked for only next to LEDs already placed: straight on from the last one, or all round it where the string may turn. Blocks whose regions are far apart in the photo light together in one frame, so a round of blocks is a handful of photos. A block found next to placed LEDs makes the next one into the same gap twice as big (up to 32).
+- Twinkle: the house's warm-white icicle lights are on the same circuit and twinkle, and in a single-LED photo the biggest change is usually an icicle. Only light that's in the block photo and brighter than in every recent off photo counts (an off photo is taken after each round, and the round's other block photos count as off where they lit nothing nearby). Where twinkle still gets through, the block is photographed twice and the light has to be in both.
+- A lit block is a short line of spots. Chained from the placed LED next to it, they're its LEDs in index order (where a string doubles back and either end could be first, it's unclear). One spot per LED: placed (confidence 0.6). The first few a step apart, then nothing: those are placed and the rest go into the next block. Nothing lit: hidden from this view (left empty). Anything else: the block is split in half and tried again, down to single LEDs.
+- A string whose decoded points are scattered rather than along a line (offline during the capture, or mostly mis-decoded) is skipped, as there's nowhere to start; so is one with nothing decoded. Capture again with it live.
+- It prints each round and a summary per string, writes `decoded.json` and `<run>/debug-blocks.jpg`, and keeps its photos in `<run>/blocks/` with a `-debug.jpg` per frame (circles: where each block was looked for; green placed, yellow partly placed, grey hidden, red unclear) and `history.json` (every block's result and why).
+
+Time: it stops starting rounds after `--minutes` (default 6). On the synthetic house (660 gap LEDs visible, 400 twinkling lights) it takes about 150 photos in 30 rounds, which at the 18 Nov phone rate of about 2 s a photo (ack, settle, snap) is about 5 minutes, and places 97% of them (median 0.26 px off; 2% more than 5 px off, mostly at corners and where a string doubles back on itself). Replayed on the real 18 Nov photos (real twinkle, light cut from the all-on frame), 2 of about 770 LEDs in real gaps came out where nothing was lit.
 
 ## A string is offline
 
 `status` and `capture` warn about any string that isn't `live`: HWIR still acks patterns without it, but its LEDs won't light, so they won't decode (`decode` shows 0 seen). Options, best first:
 
 1. Fix it (power, Wi-Fi; HWIR picks it up within a minute), then capture that viewpoint again.
-2. If it comes back later in the session: `verify <run> --fill <string> --max 200` measures its LEDs one by one from the current viewpoint (about 3–4 minutes for 196 LEDs), then `upload <run>` again.
+2. If it comes back later in the session, capture that viewpoint again: the block fill needs some of a string's LEDs decoded to start from.
 3. Otherwise finish without it. It keeps its hand-drawn path, and a later session can map it alone.
 
 ## Handing over to the editor
@@ -101,18 +118,19 @@ The session ends in `solving` with `views` on its row. The editor's review UI re
 }[]
 ```
 
-`u` runs across from the left edge and `v` down from the top, both 0..1, with pixel centres at `(x + 0.5) / width`. `confidence` is 0..1: measured points are at least 0.3 (0.9 for ones `verify --fill` lit one at a time); below 0.25 means interpolated between neighbours, not seen. `null` means not seen from this view.
+`u` runs across from the left edge and `v` down from the top, both 0..1, with pixel centres at `(x + 0.5) / width`. `confidence` is 0..1: measured points are at least 0.3 (0.6 for ones `verify --fill-blocks` placed, 0.9 for ones `verify --fill` lit one at a time); below 0.25 means interpolated between neighbours, not seen. `null` means not seen from this view.
 
 The editor lines its 3D camera up with each view's photo, raycasts the points onto the house, merges views per LED by confidence, and sends `SOLVED { proposed }` (→ review), then `APPLY` writes `ledPositions`. `RECAPTURE` from solving or review goes back to capturing and puts the display back into mapping mode; the views stay until replaced. A daily cron (`convex/crons.ts`) deletes the photos of discarded sessions (and the sessions themselves after 30 days) and any upload no view has held for a day, using the `mappingPhotos` table `addView` keeps of which session holds which photo; `upload` checks the session takes views before uploading, and deletes its photos again if attaching them fails.
 
 ## Checking the tool itself
 
 - `MAPPING_E2E=1 bun run test tools/mapping` (needs the venv; skipped otherwise, as it takes about 45 s) renders the house's real strings through a made-up 4K camera with hidden runs and LEDs overlapping another string's, captures through an in-memory session with a frame that comes back stale once, decodes, and checks it finds at least 98% of the LEDs that are separable in the photo (and 97% of all visible ones) within 2 px. 18 Nov 2026: 98.1% of all visible, 99.2% of separable, median error 0.13 px, 95th percentile 0.94 px, 7 of 8 overlapping LEDs found.
+- `bun run test tools/mapping/blockFill.test.ts` checks the block planning. With `MAPPING_E2E=1` it also fills gaps cut out of a synthetic house with 400 twinkling warm lights (about 90 s), and with `MAPPING_REPLAY=<run>` (a saved run with `verify-off.jpg` and `verify-led-*.jpg`, e.g. the 18 Nov jetty run) it replays real photos: their own twinkle, with each lit LED's light cut from the run's all-on frame; real gaps stay dark, so anything placed in one is twinkle that got through. `KEEP_MAPPING_RUN=1` keeps the frames, `report.txt` and `history.json`.
 - End to end on a local backend: run HWIR with `--dry-run --local-convex-writes` (it acks without touching the lights), make a scene with `scene --project $P --out scene.json`, then `capture ... --camera synthetic:scene.json --force` (the display is off in the backup), `decode`, `verify`, `upload --finish`.
 
 ## Files
 
-- `cli.ts`: the commands. `lib/capture.ts` the capture loop, `lib/session.ts` the Convex side, `lib/cameras.ts` the camera backends, `lib/manifest.ts` the run folder, `lib/scene.ts` and `lib/fakes.ts` the synthetic camera and session.
+- `cli.ts`: the commands. `lib/blockFill.ts` the block fill, `lib/capture.ts` the capture loop, `lib/session.ts` the Convex side, `lib/cameras.ts` the camera backends, `lib/manifest.ts` the run folder, `lib/scene.ts` and `lib/fakes.ts` the synthetic camera and session.
 - `py/mapping_cv.py`: decode, the capture checks, and synthetic rendering, run as `.venv/bin/python -I`.
 - `camera/snap.swift`, `camera/Info.plist`: the camera helper.
-- Run folders: `runs/` (git-ignored): the frames, `manifest.json` (code table, frames and their checks), `decoded.json`, `debug.jpg`, `verify-*.jpg`.
+- Run folders: `runs/` (git-ignored): the frames, `manifest.json` (code table, frames and their checks), `decoded.json`, `debug.jpg`, `verify-*.jpg`, and from a block fill `debug-blocks.jpg` and `blocks/`.

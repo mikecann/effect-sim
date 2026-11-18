@@ -61,6 +61,10 @@ export const isLit = (
   if (pattern.kind === "string") return pattern.nodeKey === key;
   if (pattern.kind === "led")
     return pattern.nodeKey === key && pattern.index === index;
+  if (pattern.kind === "ranges")
+    return pattern.ranges.some(
+      (r) => r.nodeKey === key && index >= r.from && index <= r.to,
+    );
   if (code === null) return false;
   return (((code >> pattern.bit) & 1) === 1) !== pattern.inverted;
 };

@@ -238,8 +238,7 @@ export class PhoneCamera implements Camera {
     const res = await fetch(
       `${this.server}/snap?settle=${Math.round(settleMs)}`,
     );
-    if (!res.ok)
-      throw new Error(`Phone camera: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Phone camera: ${await res.text()}`);
     writeFileSync(path, new Uint8Array(await res.arrayBuffer()));
   }
 
@@ -345,6 +344,8 @@ export const describe = (p: MappingPattern) =>
       ? `string ${p.nodeKey}`
       : p.kind === "led"
         ? `LED ${p.index} of ${p.nodeKey}`
-        : p.kind === "all"
-          ? "every LED on"
-          : "every LED off";
+        : p.kind === "ranges"
+          ? `${p.ranges.length} runs of LEDs`
+          : p.kind === "all"
+            ? "every LED on"
+            : "every LED off";

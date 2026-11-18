@@ -273,6 +273,8 @@ export const hwirPresenceState = v.union(
 // - off / all: every string dark, or every LED lit;
 // - string: one string's LEDs, the rest dark;
 // - led: one LED;
+// - ranges: runs of LEDs, `from` to `to` inclusive, each on its own string
+//   (blocks of gap LEDs, lit together where the camera can tell them apart);
 // - bit: every LED whose index has this bit set (or clear, when inverted), so
 //   a few photos tell every LED apart.
 export const mappingPatternValidator = v.union(
@@ -283,6 +285,12 @@ export const mappingPatternValidator = v.union(
     kind: v.literal("led"),
     nodeKey: v.string(),
     index: v.number(),
+  }),
+  v.object({
+    kind: v.literal("ranges"),
+    ranges: v.array(
+      v.object({ nodeKey: v.string(), from: v.number(), to: v.number() }),
+    ),
   }),
   v.object({
     kind: v.literal("bit"),

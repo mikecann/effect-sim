@@ -5,6 +5,7 @@
 //   bun tools/mapping/cli.ts capture --project <id> --view front --camera snap:1
 //   bun tools/mapping/cli.ts decode  <run dir>
 //   bun tools/mapping/cli.ts verify  <run dir> --string 3 --led 3:0,50,100
+//   bun tools/mapping/cli.ts verify  <run dir> --fill-blocks all
 //   bun tools/mapping/cli.ts upload  <run dir> [--finish]
 
 import { Command } from "commander";
@@ -36,6 +37,7 @@ import { ensure } from "../../shared/ensure";
 import { makeScene, type HouseString, type Scene } from "./lib/scene";
 import { ConvexMapping } from "./lib/session";
 import { checkWrites } from "./lib/deployment";
+import { fillBlocks } from "./lib/blockFill";
 import { uploadView } from "./lib/upload";
 
 // The deployment comes from CONVEX_URL, or VITE_CONVEX_URL in the repo's
@@ -133,8 +135,7 @@ const makeCamera = (
   const arg = rest.join(":");
   if (kind === "snap") return new SnapCamera(arg || "0");
   if (kind === "ffmpeg") return new FfmpegCamera(arg || "0");
-  if (kind === "phone")
-    return new PhoneCamera(arg || "http://127.0.0.1:18731");
+  if (kind === "phone") return new PhoneCamera(arg || "http://127.0.0.1:18731");
   if (kind === "manual")
     return new ManualCamera(
       resolve(arg || join(process.env.HOME ?? ".", "Downloads")),
@@ -337,7 +338,7 @@ program
 program
   .command("verify <run>")
   .description(
-    "Light single strings or LEDs and check them against the decode; --fill measures missing LEDs one by one",
+    "Light single strings or LEDs and check them against the decode; --fill-blocks fills gaps a block at a time, --fill one LED at a time",
   )
   .option("--camera <spec>", "camera spec (default: the run's)")
   .option("--string <ref...>", "string names or keys to light one at a time")
@@ -347,6 +348,21 @@ program
     "measure every missing or interpolated LED of these strings, one at a time",
   )
   .option("--max <n>", "most LEDs --fill lights", "60")
+  .option(
+    "--fill-blocks <ref...>",
+    "fill the gaps of these strings (or all) a block of LEDs at a time, robust to twinkling lights",
+  )
+  .option("--block <n>", "LEDs per block for --fill-blocks", "8")
+  .option(
+    "--repeats <n>",
+    "photos of each block frame (light must be in all of them); one more where twinkle got through",
+    "1",
+  )
+  .option(
+    "--minutes <n>",
+    "--fill-blocks starts no new round after this long",
+    "6",
+  )
   .option("--settle <ms>", "", "400")
   .option(...prodOption)
   .action(async (run: string, opts) => {
@@ -430,7 +446,9 @@ program
       // neighbours, with room for how far apart they are.
       const nearOf = (key: string, i: number) => {
         const pts = decoded.strings.find((x) => x.key === key)?.points ?? [];
-        const ok = (p: (typeof pts)[number]) => p && p.confidence >= 0.3;
+        const ok = (
+          p: (typeof pts)[number] | undefined,
+        ): p is NonNullable<(typeof pts)[number]> => !!p && p.confidence >= 0.3;
         let a = i - 1;
         while (a >= 0 && !ok(pts[a])) a--;
         let b = i + 1;
@@ -442,9 +460,10 @@ program
         const aspect = decoded.imageHeight / decoded.imageWidth;
         const gaps: number[] = [];
         for (let k = 1; k < pts.length; k++) {
-          const p = pts[k - 1], q = pts[k];
+          const p = pts[k - 1],
+            q = pts[k];
           if (ok(p) && ok(q))
-            gaps.push(Math.hypot(p!.u - q!.u, (p!.v - q!.v) * aspect));
+            gaps.push(Math.hypot(p.u - q.u, (p.v - q.v) * aspect));
         }
         gaps.sort((x, y) => x - y);
         const step = gaps.length ? gaps[gaps.length >> 1] : 0.01;
@@ -459,7 +478,11 @@ program
         }
         const p = pa ?? pb;
         if (!p) return undefined;
-        return { u: p.u, v: p.v, radius: step * (Math.abs(i - (pa ? a : b)) + 4) };
+        return {
+          u: p.u,
+          v: p.v,
+          radius: step * (Math.abs(i - (pa ? a : b)) + 4),
+        };
       };
       const measure = async (key: string, name: string, i: number) => {
         ledDark ??= await shot({ kind: "off" }, "off");
@@ -542,6 +565,41 @@ program
         writeDecoded(runDir, decoded as Decoded);
         log(
           `Lit ${filled} LEDs one by one: ${measuredCount} measured, ${filled - measuredCount} hidden from this view (now empty). Saved decoded.json.`,
+        );
+      }
+
+      if (opts.fillBlocks) {
+        const refs: string[] = opts.fillBlocks;
+        const keys = refs.includes("all")
+          ? decoded.strings.map((s) => s.key)
+          : refs.map((ref) => findString(strings, ref).key);
+        const report = await fillBlocks({
+          decoded: decoded as Decoded,
+          keys,
+          names: new Map(strings.map((s) => [s.key, s.name])),
+          session,
+          camera,
+          py,
+          dir: join(runDir, "blocks"),
+          settleMs: settle,
+          blockSize: Number(opts.block),
+          repeats: Number(opts.repeats),
+          minutes: Number(opts.minutes),
+          log,
+        });
+        writeDecoded(runDir, decoded as Decoded);
+        await py.call("draw", {
+          photo: join(
+            runDir,
+            existsSync(join(runDir, "reference.jpg"))
+              ? "reference.jpg"
+              : "all.jpg",
+          ),
+          result: decoded,
+          out: join(runDir, "debug-blocks.jpg"),
+        });
+        log(
+          `Block fill: ${report.found} LEDs placed, ${report.hidden} hidden from this view, ${report.unclear} unclear, ${report.left} not reached, of ${report.todo}, in ${report.rounds} rounds, ${report.frames} photos, ${report.seconds.toFixed(0)} s (${report.secondsPerFrame.toFixed(1)} s a photo). Saved decoded.json; look at ${join(runDir, "debug-blocks.jpg")} and the frames in ${join(runDir, "blocks")}.`,
         );
       }
       await session.show({ kind: "all" });
@@ -666,7 +724,7 @@ program
 program
   .command("show <pattern>")
   .description(
-    "Light one pattern in the capturing session (off, all, string:<ref>, led:<ref>:<i>, bit:<n>[:inv]), to aim the camera",
+    "Light one pattern in the capturing session (off, all, string:<ref>, led:<ref>:<i>, range:<ref>:<from>-<to>, bit:<n>[:inv]), to aim the camera",
   )
   .requiredOption("--project <id>")
   .option(...prodOption)
@@ -685,11 +743,22 @@ program
           ? { kind, nodeKey: findString(strings, a).key }
           : kind === "led"
             ? { kind, nodeKey: findString(strings, a).key, index: Number(b) }
-            : kind === "bit"
-              ? { kind, bit: Number(a), inverted: b === "inv" }
-              : kind === "all"
-                ? { kind }
-                : { kind: "off" };
+            : kind === "range"
+              ? {
+                  kind: "ranges",
+                  ranges: [
+                    {
+                      nodeKey: findString(strings, a).key,
+                      from: Number(b.split("-")[0]),
+                      to: Number(b.split("-")[1] ?? b.split("-")[0]),
+                    },
+                  ],
+                }
+              : kind === "bit"
+                ? { kind, bit: Number(a), inverted: b === "inv" }
+                : kind === "all"
+                  ? { kind }
+                  : { kind: "off" };
       const { seq } = await mapping.driver(active.id).show(p);
       log(`Showing ${describePattern(p)} (seq ${seq}).`);
     } finally {

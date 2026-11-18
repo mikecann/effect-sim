@@ -1,4 +1,5 @@
 import type { MappingPattern } from "../../../convex/schema";
+import { isLit } from "../../../shared/mapping/ledCodes";
 import type { Camera, FrameRequest } from "./cameras";
 import type { MappedString } from "./manifest";
 import type { PyWorker } from "./python";
@@ -73,6 +74,61 @@ export class SyntheticCamera implements Camera {
       out: path,
       seed: ++this.shots,
       reference: this.autoExposure,
+    });
+  }
+
+  async close() {}
+}
+
+/**
+ * Replays a real night for the block fill: each photo is one of `bases` (real
+ * nearly dark frames, in turn, with whatever twinkled when they were taken)
+ * plus, for each LED the pattern lights that `truth` places, that spot's
+ * light from a real all-on frame. LEDs `truth` doesn't place stay dark, as if
+ * hidden from this view.
+ */
+export class ReplayCamera implements Camera {
+  readonly kind = "replay";
+  private shots = 0;
+
+  constructor(
+    private readonly opts: {
+      bases: string[];
+      allOn: string;
+      dark: string;
+      truth: Map<string, ({ u: number; v: number } | null)[]>;
+      /** Radius of each LED's light, px. */
+      radius: number;
+    },
+    private readonly lights: Lights,
+    private readonly py: PyWorker,
+  ) {}
+
+  async open() {
+    return {};
+  }
+  async lock() {
+    return {};
+  }
+  async auto() {
+    return {};
+  }
+
+  async snap(path: string) {
+    const pattern = this.lights.showing();
+    const points = [...this.opts.truth].flatMap(([key, pts]) =>
+      pts.flatMap((p, i) =>
+        p && isLit(pattern, key, i, null) ? [{ u: p.u, v: p.v }] : [],
+      ),
+    );
+    const { bases } = this.opts;
+    await this.py.call("compose", {
+      base: bases[this.shots++ % bases.length],
+      source: this.opts.allOn,
+      sourceDark: this.opts.dark,
+      points,
+      radius: this.opts.radius,
+      out: path,
     });
   }
 

@@ -25,7 +25,7 @@ let info: PhoneInfo = {};
 let nextId = 1;
 const pendingSnaps = new Map<
   number,
-  { resolve: (b: Uint8Array) => void; reject: (e: Error) => void }
+  { resolve: (b: Uint8Array<ArrayBuffer>) => void; reject: (e: Error) => void }
 >();
 const pendingCommands = new Map<number, (r: PhoneInfo) => void>();
 
@@ -36,7 +36,8 @@ const ask = <T>(
   register: (id: number) => Promise<T>,
   timeoutMs: number,
 ) => {
-  if (!phone) throw new Error("No phone connected. Open the page on the phone.");
+  if (!phone)
+    throw new Error("No phone connected. Open the page on the phone.");
   const id = nextId++;
   const result = register(id);
   phone.send(JSON.stringify({ ...msg, id }));
@@ -55,7 +56,7 @@ const snap = (settleMs: number) =>
     ask(
       { type: "snap" },
       (id) =>
-        new Promise<Uint8Array>((resolve, reject) =>
+        new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) =>
           pendingSnaps.set(id, { resolve, reject }),
         ),
       15_000,
@@ -108,7 +109,9 @@ Bun.serve({
       }
       if (r === "snap") {
         const bytes = await snap(Number(url.searchParams.get("settle") ?? 0));
-        return new Response(bytes, { headers: { "content-type": "image/jpeg" } });
+        return new Response(bytes, {
+          headers: { "content-type": "image/jpeg" },
+        });
       }
       if (r === "lock" || r === "auto") return json(await command(r));
       return new Response("Not found", { status: 404 });

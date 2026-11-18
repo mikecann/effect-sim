@@ -336,6 +336,47 @@ describe("mappingSession", () => {
     ).not.toHaveProperty("ledPositions");
   });
 
+  test("ranges light runs of LEDs; malformed or too many are refused", async () => {
+    const { t, session, send } = await setupMapping();
+    const ranges = [
+      { nodeKey: "s1", from: 0, to: 1 },
+      { nodeKey: "s2", from: 40, to: 47 },
+    ];
+    await t.mutation(api.mapping.show, {
+      ...send.editor,
+      pattern: { kind: "ranges", ranges },
+    });
+    expect(await session()).toMatchObject({
+      request: { seq: 1, pattern: { kind: "ranges", ranges } },
+    });
+
+    for (const bad of [
+      { nodeKey: "s1", from: 3, to: 2 },
+      { nodeKey: "s1", from: -1, to: 2 },
+      { nodeKey: "s1", from: 0.5, to: 2 },
+    ])
+      await expect(
+        t.mutation(api.mapping.show, {
+          ...send.editor,
+          pattern: { kind: "ranges", ranges: [bad] },
+        }),
+      ).rejects.toThrow(/isn't a run of LED indexes/);
+    await expect(
+      t.mutation(api.mapping.show, {
+        ...send.editor,
+        pattern: {
+          kind: "ranges",
+          ranges: Array.from({ length: 201 }, (_, i) => ({
+            nodeKey: "s1",
+            from: i,
+            to: i,
+          })),
+        },
+      }),
+    ).rejects.toThrow(/at most 200 ranges/);
+    expect(await session()).toMatchObject({ request: { seq: 1 } });
+  });
+
   test("a capture nobody finishes is abandoned, and the display goes back", async () => {
     const { t, display, session } = await setupMapping();
     await advance(t, 10 * 60_000 + 1000);
