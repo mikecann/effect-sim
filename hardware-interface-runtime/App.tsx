@@ -8,9 +8,8 @@ import { FrameProvider } from "../src/common/FixedFrameProvider";
 import { useDisplayControl, useProjectModel } from "./hooks";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
-import { AutoUpdater } from "./AutoUpdater";
-
-const shouldAutoUpdate = process.env.HWIR_AUTO_UPDATE === "true";
+import { runMode } from "./runMode";
+import { SmokeCheck } from "./SmokeCheck";
 
 export const App = observer(({ app }: { app: HWIRAppModel }) => {
   useProjectModel(app);
@@ -25,8 +24,8 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
 
   return (
     <LedDataStoreContext.Provider value={app.dataStore}>
-      {shouldAutoUpdate ? <AutoUpdater app={app} /> : null}
       <FrameProvider fps={fps}>
+        {runMode === "smoke" ? <SmokeCheck app={app} /> : null}
         {app.strings.map((string) => (
           <String key={string.string._id} model={string} />
         ))}
@@ -43,7 +42,7 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
             ) : null}
             <HeadlessLedDataDispatcher app={app} />
           </>
-        ) : (
+        ) : runMode === "smoke" ? null : (
           <ClientDataSocket app={app} />
         )}
       </FrameProvider>

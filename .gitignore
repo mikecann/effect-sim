@@ -25,3 +25,7 @@ dist-ssr
 
 # Ignored for the template, you probably want to remove it:
 package-lock.json
+
+# HWIR supervisor state (last good commit, failed commits)
+.hwir-supervisor.json
+.hwir-supervisor.json.tmp
