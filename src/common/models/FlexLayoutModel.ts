@@ -15,6 +15,7 @@ export const INSPECTOR_TAB_ID = "tab-inspector";
 export const STRINGS_TAB_ID = "tab-strings";
 export const SEQUENCER_TAB_ID = "tab-sequencer";
 export const PLAYLISTS_TAB_ID = "tab-playlists";
+export const MAPPING_TAB_ID = "tab-mapping";
 
 export class FlexLayoutModel {
   model: Model;
@@ -125,6 +126,31 @@ export class FlexLayoutModel {
         ).getId(),
         DockLocation.BOTTOM,
         1,
+      ),
+    );
+  }
+
+  /** Opens the camera mapping panel beside the inspector. */
+  showMapping() {
+    if (this.model.getNodeById(MAPPING_TAB_ID))
+      return this.model.doAction(Actions.selectTab(MAPPING_TAB_ID));
+    const inspector =
+      this.model.getNodeById("inspector") ??
+      this.model.getNodeById(INSPECTOR_TAB_ID);
+    const tabset = inspector?.getParent();
+    if (!tabset) return;
+    this.model.doAction(
+      Actions.addNode(
+        {
+          type: "tab",
+          name: "Mapping",
+          id: MAPPING_TAB_ID,
+          component: "mapping",
+          enableClose: true,
+        },
+        tabset.getId(),
+        DockLocation.CENTER,
+        -1,
       ),
     );
   }

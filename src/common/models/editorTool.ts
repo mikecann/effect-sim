@@ -30,6 +30,8 @@ export type PointPair = { image: ImagePoint; world: Point3 };
 export type MappingTool = {
   kind: "mapping";
   sessionKey: Id<"mappingSessions">;
+  /** Which of the session's camera views is being lined up. */
+  viewName: string;
   step: MappingStep;
   /** Points picked on the photo and the same points on the house. */
   pairs: PointPair[];
@@ -63,7 +65,11 @@ export type ToolEvent =
   | { kind: "DISCARD_PLACING" }
   /** Enter, or the path used the string's whole length. */
   | { kind: "FINISH_PLACING" }
-  | { kind: "START_MAPPING"; sessionKey: Id<"mappingSessions"> }
+  | {
+      kind: "START_MAPPING";
+      sessionKey: Id<"mappingSessions">;
+      viewName: string;
+    }
   | { kind: "PICK_PAIRS" }
   | { kind: "STOP_PICKING" }
   | { kind: "PHOTO_POINT"; image: ImagePoint }
@@ -196,8 +202,15 @@ export const moveTool = (tool: EditorTool, event: ToolEvent): ToolMove => {
     return to({
       kind: "mapping",
       sessionKey: event.sessionKey,
+      viewName: event.viewName,
       step: { kind: "view" },
-      pairs: tool.kind === "mapping" ? tool.pairs : [],
+      // Pairs belong to one view's photo.
+      pairs:
+        tool.kind === "mapping" &&
+        tool.sessionKey === event.sessionKey &&
+        tool.viewName === event.viewName
+          ? tool.pairs
+          : [],
     });
   if (event.kind === "START_PICKING_RANGE")
     return to({

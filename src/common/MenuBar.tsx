@@ -14,6 +14,7 @@ import OpenProjectModal from "./projects/OpenProjectModal";
 import ProjectSettingsModal from "./projects/ProjectSettingsModal";
 import { HardwareInterfaceStatus } from "./hardware-interface/HardwareInterfaceStatus";
 import { SaveStatus } from "./SaveStatus";
+import { LightsStatus } from "./hardware-interface/LightsStatus";
 
 export default function MenuBar() {
   const app = useApp();
@@ -110,6 +111,9 @@ export default function MenuBar() {
                 </Menu.Item>
                 <Menu.Item onClick={() => app.layout.showPlaylists()}>
                   Show Playlists
+                </Menu.Item>
+                <Menu.Item onClick={() => app.layout.showMapping()}>
+                  Show Mapping
                 </Menu.Item>
                 <Divider my="sm" />
                 <Menu.Item
@@ -214,6 +218,7 @@ export default function MenuBar() {
 
           <Group gap="md">
             <SaveStatus />
+            <LightsStatus />
             <HardwareInterfaceStatus />
           </Group>
         </Group>

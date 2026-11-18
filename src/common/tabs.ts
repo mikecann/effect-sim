@@ -1,6 +1,6 @@
 import type { IJsonModel } from "flexlayout-react";
 
-export type TabComponentKinds = "simulator" | "nodes" | "playlists" | "inspector" | "sequencer";
+export type TabComponentKinds = "simulator" | "nodes" | "playlists" | "inspector" | "sequencer" | "mapping";
 
 export const defaultLayoutJson: IJsonModel = {
   global: {},

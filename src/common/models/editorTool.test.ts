@@ -107,7 +107,7 @@ describe("the editor's tool", () => {
 
   it("pairs a photo point with a house point while mapping", () => {
     const { tool } = run([
-      { kind: "START_MAPPING", sessionKey: session },
+      { kind: "START_MAPPING", sessionKey: session, viewName: "front" },
       { kind: "MESH_POINT", world: p(9) },
       { kind: "PICK_PAIRS" },
       { kind: "PHOTO_POINT", image: { u: 0.1, v: 0.2 } },
@@ -117,11 +117,18 @@ describe("the editor's tool", () => {
     expect(tool).toEqual({
       kind: "mapping",
       sessionKey: session,
+      viewName: "front",
       step: { kind: "pickMesh", image: { u: 0.3, v: 0.4 } },
       pairs: [{ image: { u: 0.1, v: 0.2 }, world: p(1) }],
     });
     const removed = run([{ kind: "REMOVE_PAIR", index: 0 }], tool).tool;
     expect(removed.kind === "mapping" && removed.pairs).toEqual([]);
+    // Another view's photo starts with no pairs.
+    const otherView = run(
+      [{ kind: "START_MAPPING", sessionKey: session, viewName: "side" }],
+      tool,
+    ).tool;
+    expect(otherView.kind === "mapping" && otherView.pairs).toEqual([]);
   });
 
   it("sets a segment's range from two clicked LEDs, reversed when picked backwards", () => {

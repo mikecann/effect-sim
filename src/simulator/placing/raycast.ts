@@ -19,6 +19,38 @@ export const collectSurfaceMeshes = (
   return meshes;
 };
 
+export type SurfaceHit = {
+  /** Where the ray hit, lifted `offset` metres off the surface. */
+  point: THREE.Vector3;
+  /** The surface's normal there, facing the ray (null for a face-less hit). */
+  normal: THREE.Vector3 | null;
+  /** How square-on the ray met the surface: 1 head-on, near 0 glancing. */
+  headOn: number;
+};
+
+/** Where a ray first hits the surface, and how; null if it hits nothing. */
+export const raycastSurfaceHit = (
+  raycaster: THREE.Raycaster,
+  meshes: THREE.Object3D[],
+  offset = SURFACE_OFFSET_M,
+): SurfaceHit | null => {
+  const hit = raycaster.intersectObjects(meshes, true)[0];
+  if (!hit) return null;
+  const point = hit.point.clone();
+  if (!hit.face) return { point, normal: null, headOn: 1 };
+  const normal = hit.face.normal
+    .clone()
+    .applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+    .normalize();
+  // Faces seen from behind (thin walls, open meshes) lift towards the camera.
+  if (normal.dot(raycaster.ray.direction) > 0) normal.negate();
+  return {
+    point: point.add(normal.clone().multiplyScalar(offset)),
+    normal,
+    headOn: Math.abs(normal.dot(raycaster.ray.direction)),
+  };
+};
+
 /**
  * Where a ray first hits the surface, lifted `offset` metres off it along the
  * face's normal; null if it hits nothing.
@@ -27,19 +59,8 @@ export const raycastSurface = (
   raycaster: THREE.Raycaster,
   meshes: THREE.Object3D[],
   offset = SURFACE_OFFSET_M,
-): THREE.Vector3 | null => {
-  const hit = raycaster.intersectObjects(meshes, true)[0];
-  if (!hit) return null;
-  const point = hit.point.clone();
-  if (!hit.face) return point;
-  const normal = hit.face.normal
-    .clone()
-    .applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
-    .normalize();
-  // Faces seen from behind (thin walls, open meshes) lift towards the camera.
-  if (normal.dot(raycaster.ray.direction) > 0) normal.negate();
-  return point.add(normal.multiplyScalar(offset));
-};
+): THREE.Vector3 | null =>
+  raycastSurfaceHit(raycaster, meshes, offset)?.point ?? null;
 
 /** The ray from a camera through a point in normalised device coordinates. */
 export const rayFromCamera = (

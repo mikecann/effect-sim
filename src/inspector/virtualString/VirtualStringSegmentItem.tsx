@@ -1,5 +1,13 @@
 import type { NodeKey } from "../../../shared/models/docs";
-import { Button, Group, RangeSlider, Select, Stack, Switch, Text } from "@mantine/core";
+import {
+  Button,
+  Group,
+  RangeSlider,
+  Select,
+  Stack,
+  Switch,
+  Text,
+} from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { useApp } from "../../common/AppContext";
 import type { VirtualStringNodeSegmentModel } from "../../../shared/models/VirtualStringNodeSegmentModel";
@@ -12,6 +20,11 @@ export function VirtualStringSegmentItem({
   const appModel = useApp();
 
   const isSelected = segmentModel.isSelected(appModel);
+  const tool = appModel.tool;
+  const isPicking =
+    tool.kind === "pickingRange" &&
+    tool.virtualStringKey === segmentModel.virtualStringNode.key &&
+    tool.segmentIndex === segmentModel.segmentIndex;
 
   return (
     <Stack
@@ -84,9 +97,30 @@ export function VirtualStringSegmentItem({
         </Group>
 
         <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Index Range
-          </Text>
+          <Group justify="space-between" align="center">
+            <Text size="sm" fw={500}>
+              Index Range
+            </Text>
+            <Button
+              size="compact-xs"
+              variant={isPicking ? "filled" : "light"}
+              onClick={(e) => {
+                e.stopPropagation();
+                segmentModel.setSelected(appModel, segmentModel.segmentIndex);
+                appModel.sendTool(
+                  isPicking
+                    ? { kind: "SELECT" }
+                    : {
+                        kind: "START_PICKING_RANGE",
+                        virtualStringKey: segmentModel.virtualStringNode.key,
+                        segmentIndex: segmentModel.segmentIndex,
+                      },
+                );
+              }}
+            >
+              {isPicking ? "Picking on the house…" : "Pick on the house"}
+            </Button>
+          </Group>
           <RangeSlider
             value={[segmentModel.fromIndex, segmentModel.toIndex]}
             min={0}

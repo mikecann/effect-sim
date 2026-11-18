@@ -47,6 +47,7 @@ export const mappingSession = defineMachine(
         CAPTURED: {},
         SOLVED: { proposed: v.array(stringPositionsValidator) },
         RECAPTURE: {},
+        REALIGN: {},
         APPLY: {},
         ROLLBACK: {},
         DISCARD: {},
@@ -135,6 +136,11 @@ export const mappingSession = defineMachine(
             effect: "apply",
             description:
               "The positions go onto the strings, and what they had before is kept.",
+          },
+          REALIGN: {
+            to: "solving",
+            description:
+              "They look wrong but the photos are fine; line the photo up with the house again.",
           },
           RECAPTURE: {
             to: "capturing",

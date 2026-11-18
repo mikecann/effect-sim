@@ -108,6 +108,13 @@ export const recapture = editorMutation({
     await mappingSession.send(ctx, sessionId, { type: "RECAPTURE" }),
 });
 
+/** Back from review to lining the photo up again; the capture stays. */
+export const realign = editorMutation({
+  args: sessionArgs,
+  handler: async (ctx, { sessionId }) =>
+    await mappingSession.send(ctx, sessionId, { type: "REALIGN" }),
+});
+
 /** Put the reviewed positions on the strings. */
 export const apply = editorMutation({
   args: sessionArgs,
@@ -199,6 +206,25 @@ export const get = query({
     const row = await ctx.db.get("mappingSessions", sessionId);
     return row
       ? { id: row._id, projectId: row.projectId, state: row.state }
+      : null;
+  },
+});
+
+/** The project's newest session in any state (so an applied one can be rolled back), or null. */
+export const latest = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    const rows = await ctx.db
+      .query("mappingSessions")
+      .withIndex("by_project_state", (q) => q.eq("projectId", projectId))
+      // A project has a handful of sessions; this is plenty.
+      .take(500);
+    const row = rows.reduce<(typeof rows)[number] | null>(
+      (newest, r) => (!newest || r.startedAt > newest.startedAt ? r : newest),
+      null,
+    );
+    return row
+      ? { id: row._id, startedAt: row.startedAt, state: row.state }
       : null;
   },
 });
