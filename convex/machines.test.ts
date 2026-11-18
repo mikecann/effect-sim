@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { advance, register } from "@convex-dev/state-machines/test";
 import { missingDescriptions } from "@convex-dev/state-machines";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { machines } from "./machines";
 
@@ -363,6 +363,82 @@ describe("mappingSession", () => {
       kind: "sequence",
       id: "sparkles",
     });
+  });
+
+  test("recapturing puts the display back into mapping mode", async () => {
+    const { t, display, sessionId, send } = await setupMapping();
+    await t.mutation(api.mapping.captured, send.editor);
+    expect((await display())?.settings.mode).toEqual({
+      kind: "playlist",
+      id: "winter",
+    });
+    await t.mutation(api.mapping.recapture, send.editor);
+    expect((await display())?.settings.mode).toEqual({
+      kind: "mapping",
+      id: sessionId,
+      returnTo: { kind: "playlist", id: "winter" },
+    });
+    // And from review, too.
+    await t.mutation(api.mapping.captured, send.editor);
+    await t.mutation(api.mapping.solved, { ...send.editor, proposed: [] });
+    await t.mutation(api.mapping.recapture, send.editor);
+    expect((await display())?.settings.mode).toMatchObject({
+      kind: "mapping",
+      id: sessionId,
+    });
+  });
+
+  test("photos no view holds are deleted: on request, and daily once a day old or once their session is discarded", async () => {
+    const { t, sessionId, send } = await setupMapping();
+    const store = () =>
+      t.run(async (ctx) => await ctx.storage.store(new Blob(["jpeg"])));
+    const stored = () =>
+      t.run(async (ctx) =>
+        (await ctx.db.system.query("_storage").collect()).map((f) => f._id),
+      );
+    const held = await store();
+    const stray = await store();
+    await t.mutation(api.mapping.addView, {
+      ...send.editor,
+      view: {
+        name: "front",
+        uploadedAt: 1,
+        photo: held,
+        imageWidth: 10,
+        imageHeight: 10,
+        strings: [],
+      },
+    });
+    expect(
+      await t.mutation(api.mapping.deleteUnattached, {
+        token: tokens.editor,
+        storageIds: [held, stray],
+      }),
+    ).toBe(1);
+    expect(await stored()).toEqual([held]);
+
+    // A fresh stray upload survives the daily run; a day-old one doesn't.
+    const fresh = await store();
+    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
+      views: 0,
+      photos: 0,
+    });
+    vi.setSystemTime(Date.now() + 25 * 60 * 60_000);
+    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
+      views: 0,
+      photos: 1,
+    });
+    expect(await stored()).toEqual([held]);
+    void fresh;
+
+    // Discarded: its views and their photos go.
+    await t.mutation(api.mapping.discard, send.editor);
+    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
+      views: 1,
+      photos: 1,
+    });
+    expect(await stored()).toEqual([]);
+    expect(await t.query(api.mapping.views, { sessionId })).toEqual([]);
   });
 
   test("views are added while capturing, replaced by name, and refused once in review", async () => {
