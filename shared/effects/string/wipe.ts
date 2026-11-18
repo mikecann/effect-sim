@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 // A band of colour sweeping across the whole house, by where each LED really
@@ -29,8 +29,7 @@ export const wipe = defineEffect({
     trail: 1,
   },
   render: function Wipe({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       const angle = (props.angle * Math.PI) / 180;
       const tilt = (props.tilt * Math.PI) / 180;
       const d = [
@@ -42,7 +41,7 @@ export const wipe = defineEffect({
       // the corner it starts from, 1 at the far one.
       const reach = d.reduce((sum, c) => sum + Math.abs(c), 0);
       const offset = -d.reduce((sum, c) => sum + Math.min(0, c), 0);
-      const edge = timing.effectPlaybackRatio * (1 + props.softness);
+      const edge = f.ratio * (1 + props.softness);
 
       for (let i = 0; i < string.ledCount; i++) {
         const p = string.getNormalisedPosition(i);

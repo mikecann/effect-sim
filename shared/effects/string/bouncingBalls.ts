@@ -68,8 +68,8 @@ export const bouncingBalls = defineEffect({
       }
     }, [props.numBalls, timing.loopCount, randomFor]);
 
-    useEffectFrame(() => {
-      const currentTime = timing.effectPlaybackRatio;
+    useEffectFrame((f) => {
+      const currentTime = f.ratio;
       const deltaTime = currentTime - lastTimeRef.current;
 
       // Handle loop wrap-around

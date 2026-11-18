@@ -116,3 +116,52 @@ describe("positions for effects", () => {
     expect(boundsOf([null])).toBeNull();
   });
 });
+
+describe("degenerate paths", () => {
+  it("handles fewer LEDs than segments (it used to loop forever)", () => {
+    const layout = resamplePath([p(0), p(0.01), p(0.02)], 196, 0.1);
+    expect(layout.positions).toHaveLength(196);
+    expect(layout.segments.reduce((n, s) => n + s.ledCount, 0)).toBe(1);
+  });
+
+  it("returns no positions for a zero, negative or missing spacing", () => {
+    for (const spacing of [0, -1, Number.NaN])
+      expect(
+        resamplePath([p(0), p(10)], 50, spacing).positions.filter(Boolean),
+      ).toEqual([]);
+  });
+
+  it("samples no more than the string holds, however tiny the spacing", () => {
+    const layout = resamplePath([p(0), p(1e6)], 300, 1e-9);
+    expect(layout.positions.filter(Boolean)).toHaveLength(300);
+  });
+
+  it("always ends, with at most ledCount positions, for random and odd paths", () => {
+    // A small seeded generator, so a failure can be replayed.
+    let seed = 12345;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const pick = <T>(items: T[]) => items[Math.floor(rand() * items.length)];
+    for (let run = 0; run < 2000; run++) {
+      const scale = pick([0, 1e-6, 0.01, 1, 100, 1e7]);
+      const count = pick([0, 1, 2, 3, 10, 200]);
+      const path: Point3[] = [];
+      for (let i = 0; i < count; i++)
+        path.push(
+          rand() < 0.3 && path.length > 0
+            ? { ...path[path.length - 1] }
+            : p(rand() * scale, rand() * scale, rand() * scale),
+        );
+      const ledCount = pick([0, 1, 2, 5, 196, 1000]);
+      const spacing = pick([1e-9, 0.001, 0.1, 1, 50]);
+      const layout = resamplePath(path, ledCount, spacing);
+      expect(layout.positions).toHaveLength(ledCount);
+      const placed = layout.segments.reduce((n, s) => n + s.ledCount, 0);
+      expect(placed).toBeLessThanOrEqual(ledCount);
+      for (const pos of layout.positions)
+        if (pos) expect(Number.isFinite(pos.x + pos.y + pos.z)).toBe(true);
+    }
+  });
+});

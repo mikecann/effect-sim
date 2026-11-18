@@ -28,7 +28,7 @@ export default function TimelineRuler() {
 
   const onScrub = useCallback(
     (frame: number) => {
-      sequence.runtime.playhead.setFrame(
+      sequence.runtime.jumpTo(
         Math.max(0, Math.min(frame, sequence.sequenceNumFrames)),
       );
     },

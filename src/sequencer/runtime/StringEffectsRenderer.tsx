@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import {
   EffectScopeContext,
+  FrameCatchUp,
   type EffectString,
 } from "../../../shared/effects/api";
 import type { StringEffect } from "../../../shared/effects/defineEffect";
@@ -13,14 +14,16 @@ function StringEffectInstance({
   effect,
   definition,
   string,
+  catchUp,
 }: {
   effect: SequenceRuntimeEffectModel;
   definition: StringEffect;
   string: EffectString;
+  catchUp: FrameCatchUp;
 }) {
   const scope = useMemo(
-    () => ({ timing: effect, target: string.key }),
-    [effect, string.key],
+    () => ({ timing: effect, target: string.key, catchUp }),
+    [effect, string.key, catchUp],
   );
   const Run = definition.Run;
   return (
@@ -33,6 +36,10 @@ function StringEffectInstance({
 export function StringEffectsRenderer() {
   const runtime = useSequenceRuntime();
   const strings = useLedData().stringsAndVirtualsMap;
+  const catchUp = useMemo(
+    () => new FrameCatchUp(() => runtime.playhead.frame),
+    [runtime],
+  );
 
   return (
     <>
@@ -48,6 +55,7 @@ export function StringEffectsRenderer() {
               effect={effect}
               definition={definition}
               string={string}
+              catchUp={catchUp}
             />
           );
         });

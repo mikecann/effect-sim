@@ -12,7 +12,7 @@ export const multiplyAll = defineEffect({
   }),
   defaults: { multiplier: 0.9 },
   render: function MultiplyAll({ string, props }) {
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       string.multiplyAll(props.multiplier);
     });
     return null;

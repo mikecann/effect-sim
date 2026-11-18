@@ -13,7 +13,7 @@ export const fadeTo = defineEffect({
   }),
   defaults: { color: [0, 0, 0], fadeSpeed: 0.1 },
   render: function FadeTo({ string, props }) {
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       for (let i = 0; i < string.ledCount; i++) {
         const [currentR, currentG, currentB] = string.getPixel(i);
 

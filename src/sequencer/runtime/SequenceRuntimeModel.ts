@@ -22,6 +22,9 @@ export class SequenceRuntimeModel {
     this.sequence = sequence;
   }
 
+  /** The frame last jumped to, while the effects replay up to it. */
+  private replayFrame: number | null = null;
+
   activeEffects: SequenceRuntimeEffectModel[] = [];
   private activeEffectsById = new Map<string, SequenceRuntimeEffectModel>();
 
@@ -34,12 +37,18 @@ export class SequenceRuntimeModel {
     }
 
     const currentFrame = this.playhead.frame;
+    // On the frame jumped to, events that already ended play too, so their
+    // replay leaves the LEDs as playing would have (useEffectFrame stops
+    // each at its last frame). From the next frame they drop out.
+    const replaying = this.replayFrame === currentFrame;
     const newActiveEventIds = new Set<string>();
 
-    // Find which events are currently active
     for (const track of this.sequence.trackModels)
       for (const event of track.events)
-        if (currentFrame >= event.startFrame && currentFrame < event.endFrame)
+        if (
+          currentFrame >= event.startFrame &&
+          (currentFrame < event.endFrame || replaying)
+        )
           newActiveEventIds.add(event.id);
 
     // Check if the set of active events changed
@@ -96,6 +105,17 @@ export class SequenceRuntimeModel {
 
   get switchNodesMap(): Map<NodeKey, SwitchNodeModel> {
     return new Map(this.allSwitchNodes.map((node) => [node.key, node]));
+  }
+
+  /**
+   * Puts the playhead somewhere by hand (scrubbing). The events playing there
+   * are worked out at once, so the effects remount together and replay as
+   * one (SequenceRuntime.tsx).
+   */
+  jumpTo(frame: number) {
+    this.replayFrame = frame;
+    this.playhead.jumpTo(frame);
+    this.updateActiveEffects();
   }
 
   incrementLoopCount() {

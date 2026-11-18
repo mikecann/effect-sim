@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 export const comet = defineEffect({
@@ -14,14 +14,11 @@ export const comet = defineEffect({
   }),
   defaults: { color: [255, 255, 255], size: 1, fadeRatio: 0.9 },
   render: function Comet({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       if (props.fadeRatio !== 1) string.multiplyAll(props.fadeRatio);
 
       const size = Math.max(1, Math.floor(Math.abs(props.size)));
-      const centerIndex = Math.floor(
-        timing.effectPlaybackRatio * string.ledCount,
-      );
+      const centerIndex = Math.floor(f.ratio * string.ledCount);
       const clampedCenter = Math.min(centerIndex, string.ledCount - 1);
       const halfSize = Math.floor((size - 1) / 2);
       const startIndex = Math.max(0, clampedCenter - halfSize);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 export const pulse = defineEffect({
@@ -14,9 +14,8 @@ export const pulse = defineEffect({
   }),
   defaults: { fromColor: [0, 0, 0], toColor: [255, 255, 255], speed: 1 },
   render: function Pulse({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
-      const adjustedRatio = (timing.effectPlaybackRatio * props.speed) % 1;
+    useEffectFrame((f) => {
+      const adjustedRatio = (f.ratio * props.speed) % 1;
       const pulseRatio = Math.sin(adjustedRatio * Math.PI * 2) * 0.5 + 0.5;
 
       const r = Math.round(

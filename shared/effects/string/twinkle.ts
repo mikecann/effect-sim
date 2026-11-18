@@ -54,8 +54,8 @@ export const twinkle = defineEffect({
       randomFor,
     ]);
 
-    useEffectFrame(() => {
-      const adjustedRatio = (timing.effectPlaybackRatio * props.speed) % 1;
+    useEffectFrame((f) => {
+      const adjustedRatio = (f.ratio * props.speed) % 1;
 
       for (let i = 0; i < string.ledCount; i++) {
         const led = ledDataRef.current[i];

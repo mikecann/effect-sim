@@ -33,7 +33,7 @@ export const lightning = defineEffect({
     const boltsRef = useRef<LightningBolt[]>([]);
     const brightnessMapRef = useRef<number[]>([]);
 
-    useEffectFrame((frame, random) => {
+    useEffectFrame((f) => {
       const ledCount = string.ledCount;
 
       // Initialize brightness map if needed
@@ -47,14 +47,15 @@ export const lightning = defineEffect({
         brightness[i] = Math.max(0, brightness[i] * props.fadeSpeed);
 
       // Randomly spawn new lightning bolts
-      if (random.next() < props.strikeChance) {
-        const centerPos = random.next() * ledCount;
-        const intensity = 0.7 + random.next() * 0.3;
+      if (f.random.next() < props.strikeChance) {
+        const centerPos = f.random.next() * ledCount;
+        const intensity = 0.7 + f.random.next() * 0.3;
         const spread =
-          props.minSpread + random.next() * (props.maxSpread - props.minSpread);
+          props.minSpread +
+          f.random.next() * (props.maxSpread - props.minSpread);
 
         boltsRef.current.push({
-          startFrame: frame,
+          startFrame: f.frame,
           centerPosition: centerPos,
           intensity,
           spread,
@@ -63,7 +64,7 @@ export const lightning = defineEffect({
 
       // Update and render active bolts
       boltsRef.current = boltsRef.current.filter((bolt) => {
-        const age = frame - bolt.startFrame;
+        const age = f.frame - bolt.startFrame;
         if (age > 8) return false; // Remove old bolts
 
         // Lightning brightness curve: instant bright flash, then quick decay
@@ -74,7 +75,7 @@ export const lightning = defineEffect({
         const numStrikes = age === 0 ? 2 : 1;
         for (let s = 0; s < numStrikes; s++) {
           const strikeCenter =
-            bolt.centerPosition + (random.next() - 0.5) * bolt.spread * 0.3;
+            bolt.centerPosition + (f.random.next() - 0.5) * bolt.spread * 0.3;
 
           // Apply brightness to LEDs near strike point
           for (let i = 0; i < ledCount; i++) {
@@ -94,7 +95,7 @@ export const lightning = defineEffect({
       // Render to LEDs with lightning colors (white/blue/purple)
       for (let i = 0; i < ledCount; i++) {
         const b = brightness[i] * props.intensity;
-        const variation = random.next() * 0.1;
+        const variation = f.random.next() * 0.1;
 
         // Color shifts from white (high intensity) to blue/purple (lower intensity)
         if (b > 0.7) {
