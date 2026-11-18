@@ -93,6 +93,7 @@ export const listNodesForProject = query({
 });
 
 export const listProjects = query({
+  args: {},
   handler: async (ctx) => ctx.db.query("projects").collect(),
 });
 
@@ -102,7 +103,7 @@ export const getProject = query({
   },
   handler: async (ctx, { projectId }) =>
     ctx.db
-      .get(projectId)
+      .get("projects", projectId)
       .then(ensureFP(`Project not found with id '${projectId}'`)),
 });
 

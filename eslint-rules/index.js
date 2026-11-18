@@ -1,4 +1,4 @@
-import noHoistedSingleUseHandlers from "./lib/rules/no-hoisted-single-use-handlers.js";
+import noHoistedSingleUseHandlers from "./no-hoisted-single-use-handlers.js";
 
 export default {
   rules: {

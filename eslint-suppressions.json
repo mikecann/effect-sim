@@ -1,0 +1,168 @@
+{
+  "convex/display.ts": {
+    "@convex-dev/no-collect-in-query": {
+      "count": 2
+    }
+  },
+  "convex/functions.ts": {
+    "@convex-dev/explicit-table-ids": {
+      "count": 2
+    },
+    "@convex-dev/no-collect-in-query": {
+      "count": 7
+    }
+  },
+  "convex/schema.ts": {
+    "@convex-dev/no-duplicate-indexes": {
+      "count": 1
+    },
+    "machines/no-optional-on-machine-tables": {
+      "count": 1
+    }
+  },
+  "hardware-interface-runtime/ClientDataSocket.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "hardware-interface-runtime/String.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 3
+    }
+  },
+  "hardware-interface-runtime/hooks.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 6
+    }
+  },
+  "shared/models/ProjectModel.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/AppContext.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/MenuBar.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/common/Portal.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/confirmation/ConfirmationProvider.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/models/TableSyncer.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/common/models/sync/reconcile.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/models/sync/snapshotDiff.test.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/models/sync/snapshotDiff.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/common/projects/ProjectSettingsModal.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/common/utils/frames.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/inspector/switch/SwitchControlsSection.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 4
+    }
+  },
+  "src/inspector/virtualString/StringSegmentRangeInstantIndicator.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/nodesTree/NodesTreeDeleteAction.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/playlists/PlaylistRow.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/sequencer/inspector/track/TrackInspector.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/sequencer/layout/NoSequenceSelectedContent.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/sequencer/timeline/TimelineRuler.tsx": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/sequencer/toolbar/EditSequenceModal.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/sequencer/tracks/TracksColumn/TrackListItem.tsx": {
+    "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/simulator/measure/MeasureTool.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/simulator/rendering/DayModeMultiCameraPass.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "src/simulator/rendering/NightModeMultiCameraPass.tsx": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  }
+}

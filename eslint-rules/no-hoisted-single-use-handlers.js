@@ -25,7 +25,7 @@ export default {
    * @returns {import("eslint").Rule.RuleListener}
    */
   create(context) {
-    const sourceCode = context.sourceCode || context.getSourceCode();
+    const sourceCode = context.sourceCode;
 
     /**
      * Check if a node is inside a React component (function/arrow function)

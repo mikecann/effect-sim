@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { Signal } from "../../shared/Signal";

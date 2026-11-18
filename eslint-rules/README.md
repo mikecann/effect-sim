@@ -1,6 +1,6 @@
-# Local ESLint Plugin
+# effect-sim's own ESLint rules
 
-This directory contains custom ESLint rules specific to this project.
+Rules that only apply to this app. The shared ones come from [mikecann-lint](https://github.com/mikecann/mikecann-lint); `eslint.config.mjs` loads this folder as the `local` plugin.
 
 ## Rules
 
@@ -51,14 +51,3 @@ export function MyComponent() {
 ```
 
 This won't trigger the warning because the handler is reused.
-
-## Project Structure
-
-```
-eslint-plugin-local/
-├── index.js                                    # Plugin entry point
-├── lib/
-│   └── rules/
-│       └── no-hoisted-single-use-handlers.js  # Rule implementation
-└── README.md                                   # This file
-```

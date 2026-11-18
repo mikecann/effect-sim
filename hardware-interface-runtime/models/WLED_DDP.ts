@@ -67,7 +67,7 @@ const connectWLEDDDP = async ({
       );
       return { socket, client };
     } catch (error) {
-      if (signal?.aborted) throw new Error("Connection aborted");
+      if (signal?.aborted) throw new Error("Connection aborted", { cause: error });
 
       attempt++;
       const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
