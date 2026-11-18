@@ -284,6 +284,40 @@ export const stringPositionsValidator = v.object({
   ledPositions: v.union(v.array(pointValidator), v.null()),
 });
 
+// One LED as a camera photo shows it: u, v in 0..1 image space (u across from
+// the left edge, v down from the top, pixel centres at (x + 0.5) / width), and
+// how sure the decoder is, 0..1. Below 0.25 the LED wasn't seen: its point was
+// interpolated from its neighbours along the string.
+export const mappingImagePointValidator = v.object({
+  u: v.number(),
+  v: v.number(),
+  confidence: v.number(),
+});
+
+// What one camera viewpoint saw (tools/mapping, `upload`). The editor lines its
+// 3D camera up with `photo`, then raycasts each point onto the house.
+export const mappingViewValidator = v.object({
+  // The viewpoint's name, e.g. "front", "side-left". Uploading the same name
+  // again replaces it.
+  name: v.string(),
+  uploadedAt: v.number(),
+  // Every LED lit, with what ambient light there was: for lining up the camera.
+  photo: v.id("_storage"),
+  // Every LED dark, same exposure as the capture (when the run had one).
+  darkPhoto: v.optional(v.id("_storage")),
+  imageWidth: v.number(),
+  imageHeight: v.number(),
+  // Per string, indexed by LED: null where the camera didn't see it.
+  strings: v.array(
+    v.object({
+      nodeKey: v.string(),
+      points: v.array(v.union(mappingImagePointValidator, v.null())),
+    }),
+  ),
+});
+
+export type MappingView = Infer<typeof mappingViewValidator>;
+
 export const mappingSessionState = v.union(
   v.object({
     kind: v.literal("capturing"),
@@ -344,6 +378,10 @@ export default defineSchema({
     startedAt: v.number(),
     state: mappingSessionState,
     stateTimers: machineTimers,
+    // The 2D points from each camera viewpoint, for the editor to solve into
+    // 3D. Kept through RECAPTURE until a new upload replaces a view.
+    // eslint-disable-next-line machines/no-optional-on-machine-tables -- capture data the tool adds beside the state, like hwirPresences' heartbeat fields
+    views: v.optional(v.array(mappingViewValidator)),
   }).index("by_project_state", ["projectId", "state.kind"]),
 
   projects: defineTable(projectFields),
