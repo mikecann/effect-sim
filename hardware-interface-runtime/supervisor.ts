@@ -235,6 +235,9 @@ const ensureDependencies = async () => {
     const want = lockHash();
     if (readStamp() === want) return;
     log(`node_modules doesn't match bun.lock, running bun install`);
+    // An install that fails partway can leave node_modules half-changed, so
+    // the old stamp must go first or a rollback would trust it.
+    rmSync(lockStampFile, { force: true });
     const result = await run(bun, ["install", "--frozen-lockfile"], {
       timeoutMs: 5 * 60_000,
     });
@@ -273,7 +276,11 @@ const startChild = async () => {
   const proc = spawn(bun, [runtimeEntry, ...childArgs], {
     cwd: repo,
     stdio: "inherit",
-    env: { ...process.env, HWIR_SUPERVISED: "1" },
+    env: {
+      ...process.env,
+      HWIR_SUPERVISED: "1",
+      HWIR_SUPERVISOR_PID: String(process.pid),
+    },
   });
   child = proc;
   childSha = sha;
@@ -437,17 +444,27 @@ const runtimeFacts = () => ({
   stateWritable: stateWritable || saveState(state),
 });
 
-const checkForUpdate = async () => {
-  const fetched = await run(git, ["fetch", "--quiet", "origin", "main"], {
-    timeoutMs: 60_000,
-  });
-  if (fetched.code !== 0) {
-    logIfChanged(`git fetch failed, will retry: ${tail(fetched.output, 3)}`);
-    return;
+/**
+ * One update check. With rehearse (the smoke boot), everything runs except
+ * the fetch and acting on the decision, so a broken check fails the gate.
+ */
+const checkForUpdate = async ({ rehearse = false } = {}) => {
+  if (!rehearse) {
+    const fetched = await run(git, ["fetch", "--quiet", "origin", "main"], {
+      timeoutMs: 60_000,
+    });
+    if (fetched.code !== 0) {
+      logIfChanged(`git fetch failed, will retry: ${tail(fetched.output, 3)}`);
+      return;
+    }
   }
 
   const repoFacts = await readRepo();
   const action = decideUpdate(repoFacts, state, runtimeFacts());
+  if (rehearse) {
+    log(`would decide: ${action.kind} (${action.why})`);
+    return;
+  }
 
   if (
     action.kind === "none" ||
@@ -523,6 +540,20 @@ type GateFailure = { step: string; output: string };
 const runGate = async (sha: string): Promise<GateFailure | null> => {
   const checkout = await prepareStaging(sha);
   if (checkout) return { step: "staging checkout", output: checkout };
+
+  // launchd always runs `bun run hwir`, so a commit that changes what that
+  // script runs can't be proven here. It needs a person on the machine.
+  const entry = (dir: string) =>
+    (
+      JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
+        scripts?: Record<string, string>;
+      }
+    ).scripts?.hwir;
+  if (entry(stagingDir) !== entry(repo))
+    return {
+      step: "entry point check",
+      output: `package.json's hwir script changed from "${entry(repo)}" to "${entry(stagingDir)}"; update the machine by hand`,
+    };
 
   // The smoke boot goes through package.json's script and this file, so a
   // broken supervisor fails here instead of on the lights.
@@ -635,11 +666,11 @@ log(
   `starting at ${short(head)} (last good ${state.lastGood ? short(state.lastGood) : "none yet"}), ` +
     `auto-update ${autoUpdate ? "on" : "off"}, runtime args: ${childArgs.join(" ") || "(none)"}`,
 );
-if (smoke) {
-  // Exercise the update path too, short of fetching or changing anything.
-  const facts = await readRepo();
-  log(`would decide: ${decideUpdate(facts, state, runtimeFacts()).why}`);
-}
+if (smoke) 
+  // Exercise the update check too, short of fetching or changing anything.
+  // If it throws, the smoke boot fails.
+  await checkForUpdate({ rehearse: true });
+
 await startChild().catch((e) => {
   log(`couldn't start the runtime (${e}), trying again in 5s`);
   restartChildIn(5_000);

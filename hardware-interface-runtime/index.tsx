@@ -25,10 +25,14 @@ if (runMode === "smoke") {
 
 // Under the supervisor: if it dies without stopping us, stop too, so launchd
 // never ends up with two runtimes driving the lights.
+// The supervisor passes its pid, so a child that was orphaned before it got
+// here can't mistake its new parent for the supervisor.
 if (process.env.HWIR_SUPERVISED === "1") {
-  const supervisorPid = process.ppid;
+  const supervisorPid = Number(process.env.HWIR_SUPERVISOR_PID);
+  const orphaned = () => process.ppid !== supervisorPid;
+  if (orphaned()) process.exit(0);
   setInterval(() => {
-    if (process.ppid !== supervisorPid) process.exit(0);
+    if (orphaned()) process.exit(0);
   }, 2000).unref();
 }
 
