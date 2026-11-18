@@ -687,7 +687,7 @@ def chain_from(start: np.ndarray, peaks: np.ndarray, first_reach: float, reach: 
 # too few placed LEDs to check, the set isn't trusted either.
 KNOWN_LIT_MAX = 0.6
 KNOWN_MIN_SAMPLES = 20
-KNOWN_MIN_PER_STRING = 8
+KNOWN_MIN_PER_STRING = 3
 
 
 def known_lit(change: np.ndarray, threshold: float, known: list[dict], blocks: list[dict], px, side: float) -> dict:
@@ -720,7 +720,10 @@ def known_lit(change: np.ndarray, threshold: float, known: list[dict], blocks: l
         c[0] += on_
         c[1] += 1
     worst = max((l / t for l, t in per.values() if t >= KNOWN_MIN_PER_STRING), default=0.0)
-    return {"knownLit": lit, "knownChecked": total, "worstStringLit": round(worst, 3)}
+    # Strings with too few placed LEDs left to check whether they showed
+    # only their blocks: their blocks in this set aren't trusted.
+    unchecked = sorted({str(b.get("key")) for b in blocks if per.get(str(b.get("key")), [0, 0])[1] < KNOWN_MIN_PER_STRING})
+    return {"knownLit": lit, "knownChecked": total, "worstStringLit": round(worst, 3), "uncheckedStrings": unchecked}
 
 
 def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[int] | None = None,
@@ -944,6 +947,12 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
                 or check["worstStringLit"] > KNOWN_LIT_MAX):
             results = [{"status": "unclear", "why": "LEDs outside the blocks lit too: the lights may not be showing this pattern", **check}
                        for _ in blocks]
+        elif check["uncheckedStrings"]:
+            results = [
+                {"status": "unclear", "why": "too few placed LEDs on this string to check it showed only its blocks", **check}
+                if str(b.get("key")) in check["uncheckedStrings"] else res
+                for b, res in zip(blocks, results)
+            ]
 
     if debug:
         # The set's own frames against the plain off frames, over the crop.

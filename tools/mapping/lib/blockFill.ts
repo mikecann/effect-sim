@@ -613,6 +613,7 @@ export const fillBlocks = async (args: {
                 o !== s && clearOf(b, other) ? files[o] : [],
               ),
             ],
+            key: b.key,
             count: b.to - b.from + 1,
             regions: b.regions,
             // All round the anchor on the same photos, where that's clear of

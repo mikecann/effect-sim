@@ -58,3 +58,12 @@ describe.skipIf(!pythonReady())("placed LEDs that light up", () => {
     expect(r.knownChecked).toBeGreaterThan(50);
   });
 });
+
+describe.skipIf(!pythonReady())("strings too thin to check", () => {
+  test("a string with a block but under 3 placed LEDs left to check is named", () => {
+    const r = run(
+      `${setup}\nknown2 = known[:2] + known[30:]\nblocks = [{"key": "a", "regions": [{"u": 0.9, "v": 0.9, "radius": 0.01}]}, {"key": "b", "regions": [{"u": 0.9, "v": 0.95, "radius": 0.01}]}]\nprint(json.dumps(m.known_lit(change, 10, known2, blocks, px, W)))`,
+    );
+    expect(r.uncheckedStrings).toEqual(["a"]);
+  });
+});
