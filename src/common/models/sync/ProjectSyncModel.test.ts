@@ -3,6 +3,7 @@ import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import type { ProjectData } from "../../../../convex/functions";
 import { ProjectModel } from "../../../../shared/models/ProjectModel";
 import {
+  orderForBatches,
   ProjectSyncModel,
   SYNC_DEBOUNCE_MS,
   type SyncChange,
@@ -167,5 +168,153 @@ describe("ProjectSyncModel", () => {
     calls[1]?.resolve(ok(1));
     await tick(0);
     expect(sync.status).toEqual({ kind: "saved" });
+  });
+
+  it("reopening a project drops the old rows and takes the server's, sending nothing stale", async () => {
+    const { project, sync, calls, label } = setup();
+    sync.close();
+    // Another tab renames a and deletes b while the project is closed.
+    const reopened = new ProjectSyncModel(project, async (changes) => {
+      calls.push({ changes, resolve: () => {}, reject: () => {} });
+      return ok(0);
+    });
+    reopened.start();
+    expect(project.nodes).toEqual([]);
+    reopened.applyServerData(
+      data(folder("a", "A (other tab)")),
+      projectDoc,
+      true,
+    );
+    await tick(SYNC_DEBOUNCE_MS * 2);
+    expect(label("a")).toBe("A (other tab)");
+    expect(project.findNode("b")).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("closing sends the last edits at once", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("last edit");
+    sync.close();
+    await tick(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.changes[0]).toMatchObject({ op: "update", key: "a" });
+  });
+
+  it("a row deleted elsewhere goes, even if edited while its update was out", async () => {
+    const { project, sync, calls } = setup();
+    const b = project.findNode("b");
+    if (b?.kind !== "folder") throw new Error("no b");
+    b.setLabel("B1");
+    await tick(SYNC_DEBOUNCE_MS);
+    b.setLabel("B2"); // edited again while the update is out
+    sync.applyServerData(data(folder("a", "A")), projectDoc, true); // deleted elsewhere
+    calls[0]?.resolve({
+      ...ok(0),
+      skipped: [
+        {
+          table: "nodes",
+          key: "b",
+          reason: "It was deleted, so the change was dropped.",
+        },
+      ],
+    });
+    await tick(SYNC_DEBOUNCE_MS * 4);
+    expect(project.findNode("b")).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("never sends a row too big to store, and still saves the rest", async () => {
+    const { project, sync, calls, label } = setup();
+    const a = project.findNode("a");
+    const b = project.findNode("b");
+    if (a?.kind !== "folder" || b?.kind !== "folder") throw new Error("no a/b");
+    a.setLabel("x".repeat(1_000_000));
+    b.setLabel("B1");
+    await tick(SYNC_DEBOUNCE_MS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.changes.map((c) => ("key" in c ? c.key : ""))).toEqual([
+      "b",
+    ]);
+    expect(label("a")).toBe("A");
+    expect(sync.lastProblems[0]).toMatchObject({ key: "a" });
+  });
+
+  it("closing with unsaved edits sends them once, then stops", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("renamed"); // and the project closes before the debounce
+    sync.close();
+    await tick(0);
+    expect(calls).toHaveLength(1);
+    calls[0]?.resolve(ok(1));
+    // Reopening clears the shared rows; the closed syncer mustn't read them.
+    project.clearRows();
+    await tick(SYNC_DEBOUNCE_MS * 20);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("closing while a batch is out sends the rest after it, once", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    const b = project.findNode("b");
+    if (a?.kind !== "folder" || b?.kind !== "folder") throw new Error("no a/b");
+    a.setLabel("A1");
+    await tick(SYNC_DEBOUNCE_MS);
+    expect(calls).toHaveLength(1);
+    b.setLabel("B1");
+    sync.close();
+    project.clearRows();
+    calls[0]?.resolve(ok(1));
+    await tick(0);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.changes.map((c) => ("key" in c ? c.key : ""))).toContain(
+      "b",
+    );
+    calls[1]?.resolve(ok(2));
+    await tick(SYNC_DEBOUNCE_MS * 20);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("orders changes so a batch never refers to a row a later batch creates", () => {
+    const node = (key: string, doc: Record<string, unknown>) =>
+      ({ table: "nodes", op: "create", key, doc }) as SyncChange;
+    const ordered = orderForBatches([
+      { table: "nodes", op: "delete", key: "gone" },
+      {
+        table: "playlists",
+        op: "create",
+        key: "p",
+        doc: { name: "P", sequenceIds: ["q"] },
+      },
+      {
+        table: "sequences",
+        op: "create",
+        key: "q",
+        doc: { name: "Q", numFrames: 1, tracks: [] },
+      },
+      node("v", { kind: "virtual_string", parentId: "inner" }),
+      node("inner", { kind: "folder", parentId: "outer" }),
+      node("s", { kind: "string", parentId: "inner" }),
+      node("outer", { kind: "folder", parentId: null }),
+      {
+        table: "nodes",
+        op: "update",
+        key: "old",
+        doc: { kind: "folder", parentId: "outer" },
+      } as SyncChange,
+    ]);
+    expect(ordered.map((c) => ("key" in c ? c.key : ""))).toEqual([
+      "outer",
+      "inner",
+      "s",
+      "v",
+      "old",
+      "q",
+      "p",
+      "gone",
+    ]);
   });
 });

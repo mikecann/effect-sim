@@ -234,6 +234,22 @@ export const stringConnectionValidator = v.union(
 export const hwirStringStatusValidator = v.object({
   key: v.string(),
   connection: stringConnectionValidator,
+  // When the string last answered HWIR's probe (absent: not since HWIR
+  // started). Per string, not per presence state.
+  // eslint-disable-next-line machines/no-optional-on-machine-tables -- heartbeat data about a string, unrelated to whether HWIR is online
+  lastSeenAt: v.optional(v.number()),
+});
+
+// The display's mains plug (Home Assistant), as HWIR last switched it. When a
+// switch fails HWIR still plays and confirms the LED side, retries the plug,
+// and reports it here.
+export const hwirPlugStatusValidator = v.object({
+  ok: v.boolean(),
+  // What HWIR switched it to, or is trying to.
+  on: v.boolean(),
+  // Since when it's been ok, or failing.
+  since: v.number(),
+  error: v.optional(v.string()),
 });
 
 // Whether HWIR is running (convex/hwirPresence.ts), from its heartbeat.
@@ -368,6 +384,9 @@ export default defineSchema({
     commit: v.string(),
     fps: v.number(),
     strings: v.array(hwirStringStatusValidator),
+    // Absent when HWIR has no plug set up, or hasn't switched it yet.
+    // eslint-disable-next-line machines/no-optional-on-machine-tables -- heartbeat data like commit and fps, the same in every presence state
+    plug: v.optional(hwirPlugStatusValidator),
     state: hwirPresenceState,
     stateTimers: machineTimers,
   }).index("by_project", ["projectId"]),

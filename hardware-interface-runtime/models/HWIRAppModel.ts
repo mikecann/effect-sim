@@ -4,14 +4,11 @@ import { Id } from "../../convex/_generated/dataModel";
 import { ProjectModel } from "../../shared/models/ProjectModel";
 import { LedDataStoreModel } from "../../src/data/LedDataStoreModel";
 import { PlaylistModel } from "../../shared/models/PlaylistModel";
-import { StringNodeModel } from "../../shared/models/StringNodeModel";
-import { HWStringModel } from "./HWStringModel";
+import type { StringNodeModel } from "../../shared/models/StringNodeModel";
 import type { DisplaySettings } from "../../convex/schema";
-import type { Infer } from "convex/values";
-import type { stringConnectionValidator } from "../../convex/schema";
-
-/** How a string's UDP connection is doing (sent in the heartbeat, convex/hwir.ts). */
-export type StringConnection = Infer<typeof stringConnectionValidator>;
+import type { StringLink } from "../strings/StringLink";
+import { FpsMeter } from "../frames/FrameClock";
+import type { PlugStatus } from "../display/plug";
 
 export class HWIRAppModel {
   project: ProjectModel | null = null;
@@ -20,9 +17,14 @@ export class HWIRAppModel {
   // or if the remote has never been used: then HWIR plays its startup playlist.
   control: DisplaySettings | null = null;
 
-  // Each string's connection, by node key. Kept here rather than on
-  // HWStringModel, which is rebuilt whenever the project's strings change.
-  connections = new Map<NodeKey, StringConnection>();
+  /** Each string's WLED link, by node key (String.tsx makes and closes them). */
+  readonly links = new Map<NodeKey, StringLink>();
+
+  /** Frames really run per second, for the heartbeat. */
+  readonly fpsMeter = new FpsMeter();
+
+  /** How the display's plug is doing (display/plug.ts), for the heartbeat. */
+  plugStatus: () => PlugStatus | null = () => null;
 
   /** The project's nodes, sequences and playlists have arrived from Convex. */
   dataLoaded = false;
@@ -33,7 +35,11 @@ export class HWIRAppModel {
       playlistId: PlaylistKey | null;
     },
   ) {
-    makeAutoObservable(this);
+    makeAutoObservable(this, {
+      links: false,
+      fpsMeter: false,
+      plugStatus: false,
+    });
   }
 
   get dataStore(): LedDataStoreModel | null {
@@ -50,12 +56,10 @@ export class HWIRAppModel {
     return this.control?.isOn ?? true;
   }
 
-  /**
-   * The editor is camera mapping (convex/mappingSession.ts). Until HWIR lights
-   * the session's patterns (Phase 3 of docs/rebuild-plan.md), it shows black.
-   */
-  get isMapping(): boolean {
-    return this.control?.mode.kind === "mapping";
+  /** The editor's camera mapping session the lights show (convex/mapping.ts), or null. */
+  get mappingSessionId(): Id<"mappingSessions"> | null {
+    const mode = this.control?.mode;
+    return mode?.kind === "mapping" ? mode.id : null;
   }
 
   get brightness(): number {
@@ -99,17 +103,12 @@ export class HWIRAppModel {
     this.control = control;
   }
 
-  get strings(): HWStringModel[] {
-    if (!this.project) return [];
-    return this.project.strings.map((s) => new HWStringModel(this, s));
+  get strings(): StringNodeModel[] {
+    return this.project?.strings ?? [];
   }
 
-  get stringsMap(): Map<NodeKey, HWStringModel> {
-    return new Map(this.strings.map((s) => [s.string.key, s]));
-  }
-
-  setConnection(key: NodeKey, connection: StringConnection) {
-    this.connections.set(key, connection);
+  setPlugStatus(read: () => PlugStatus | null) {
+    this.plugStatus = read;
   }
 
   setDataLoaded() {

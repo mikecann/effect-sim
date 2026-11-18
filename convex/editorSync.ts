@@ -2,9 +2,13 @@ import type { Infer } from "convex/values";
 import type {
   nodeFieldsValidator,
   playlistFieldsValidator,
+  projectFieldsValidator,
   sequenceFieldsValidator,
 } from "./schema";
-import { findEffectPropsProblem } from "../shared/effects/props";
+import {
+  findEffectPropsProblem,
+  parseEffectProps,
+} from "../shared/effects/props";
 
 export { stableStringify } from "../shared/stableStringify";
 
@@ -15,6 +19,7 @@ export { stableStringify } from "../shared/stableStringify";
 export type NodeFields = Infer<typeof nodeFieldsValidator>;
 export type SequenceFields = Infer<typeof sequenceFieldsValidator>;
 export type PlaylistFields = Infer<typeof playlistFieldsValidator>;
+export type ProjectFields = Infer<typeof projectFieldsValidator>;
 
 export type EditorTable = "nodes" | "sequences" | "playlists";
 
@@ -25,19 +30,99 @@ export type ProjectRows = {
 };
 
 /** A row the sync changed without being asked, and why. */
-export type Repair = { table: EditorTable; key: string; reason: string };
+export type Repair = {
+  table: EditorTable | "projects";
+  key: string;
+  reason: string;
+};
 
 const MAX_LEDS = 10_000;
 
+/**
+ * Limits on what one row may hold. Convex refuses a document over 1 MiB,
+ * which would fail the whole batch, so a row near that is refused on its own
+ * first; the rest keep arrays and strings to sizes a house never needs.
+ */
+export const LIMITS = {
+  rowBytes: 900_000,
+  key: 100,
+  name: 200,
+  ipAddress: 100,
+  emoji: 32,
+  id: 100,
+  pathPoints: 10_000,
+  segments: 1000,
+  tracks: 500,
+  eventsPerTrack: 5000,
+  appliesTo: 1000,
+  numFrames: 1_000_000,
+  sequenceIds: 1000,
+};
+
 const isIndex = (n: number) => Number.isInteger(n) && n >= 0;
+
+const tooLong = (what: string, value: string, max: number) =>
+  value.length > max
+    ? `${what} is ${value.length} characters; the most is ${max}.`
+    : null;
+
+const tooMany = (what: string, list: readonly unknown[], max: number) =>
+  list.length > max
+    ? `It has ${list.length} ${what}; the most is ${max}.`
+    : null;
+
+/** A row's size as JSON, or null if it can't be JSON at all (a BigInt, say). */
+const rowBytes = (doc: unknown): number | null => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(doc)).length;
+  } catch {
+    return null;
+  }
+};
+
+/** Project settings HWIR and the editor can run with. */
+const findProjectProblem = (project: ProjectFields): string | null => {
+  const { defaultFramerate, stringLedSize } = project.settings;
+  if (
+    defaultFramerate !== undefined &&
+    !(defaultFramerate >= 1 && defaultFramerate <= 120)
+  )
+    return `The frame rate is 1 to 120 frames a second, not ${defaultFramerate}.`;
+  if (
+    stringLedSize !== undefined &&
+    !(stringLedSize >= 0.001 && stringLedSize <= 10)
+  )
+    return `The LED size is 0.001 to 10 metres, not ${stringLedSize}.`;
+  return tooLong("The name", project.name, LIMITS.name);
+};
 
 /** Why a row can't be saved as it is, judged on its own; null when it can. */
 export const findRowProblem = (
-  table: EditorTable,
-  doc: NodeFields | SequenceFields | PlaylistFields,
+  table: EditorTable | "projects",
+  doc: NodeFields | SequenceFields | PlaylistFields | ProjectFields,
 ): string | null => {
+  const bytes = rowBytes(doc);
+  if (bytes === null) return "It can't be stored: it isn't plain JSON.";
+  if (bytes > LIMITS.rowBytes)
+    return `It's ${Math.round(bytes / 1000)} KB; a row can be at most ${LIMITS.rowBytes / 1000} KB.`;
+
+  if (table === "projects") return findProjectProblem(doc as ProjectFields);
+
   if (table === "nodes") {
     const node = doc as NodeFields;
+    const problem =
+      tooLong(
+        "The name",
+        node.kind === "folder" ? node.label : node.name,
+        LIMITS.name,
+      ) ??
+      (node.kind === "folder"
+        ? null
+        : tooLong("The icon", node.icon.emoji, LIMITS.emoji)) ??
+      (node.parentId === null
+        ? null
+        : tooLong("The parent key", node.parentId, LIMITS.key));
+    if (problem) return problem;
     if (node.kind === "string") {
       if (
         !Number.isInteger(node.ledCount) ||
@@ -47,8 +132,18 @@ export const findRowProblem = (
         return `A string has 1 to ${MAX_LEDS} LEDs, not ${node.ledCount}.`;
       if (node.ledPositions && node.ledPositions.length !== node.ledCount)
         return `The string has ${node.ledCount} LEDs but ${node.ledPositions.length} mapped positions.`;
+      const more =
+        tooLong("The IP address", node.ipAddress, LIMITS.ipAddress) ??
+        tooMany("path points", node.pathPoints, LIMITS.pathPoints);
+      if (more) return more;
     }
-    if (node.kind === "virtual_string")
+    if (node.kind === "switch") {
+      const more = tooLong("The IP address", node.ipAddress, LIMITS.ipAddress);
+      if (more) return more;
+    }
+    if (node.kind === "virtual_string") {
+      const more = tooMany("segments", node.segments, LIMITS.segments);
+      if (more) return more;
       for (const segment of node.segments)
         if (
           !isIndex(segment.fromIndex) ||
@@ -56,26 +151,83 @@ export const findRowProblem = (
           segment.fromIndex > segment.toIndex
         )
           return `A segment runs from LED ${segment.fromIndex} to ${segment.toIndex}: it needs whole numbers, from no more than to.`;
+    }
     return null;
   }
 
   if (table === "sequences") {
     const sequence = doc as SequenceFields;
-    if (!(sequence.numFrames >= 1))
-      return `A sequence needs at least one frame, not ${sequence.numFrames}.`;
-    for (const track of sequence.tracks)
+    if (!(sequence.numFrames >= 1 && sequence.numFrames <= LIMITS.numFrames))
+      return `A sequence has 1 to ${LIMITS.numFrames} frames, not ${sequence.numFrames}.`;
+    const problem =
+      tooLong("The name", sequence.name, LIMITS.name) ??
+      tooMany("tracks", sequence.tracks, LIMITS.tracks);
+    if (problem) return problem;
+    for (const track of sequence.tracks) {
+      const trackProblem =
+        tooLong("A track's id", track.id, LIMITS.id) ??
+        tooLong("A track's name", track.name, LIMITS.name) ??
+        tooMany("effects on one track", track.events, LIMITS.eventsPerTrack);
+      if (trackProblem) return trackProblem;
       for (const event of track.events) {
-        const problem = findEffectPropsProblem(
+        const problem =
+          tooLong("An effect's id", event.id, LIMITS.id) ??
+          tooLong("An effect's name", event.effectDefinitionId, LIMITS.id) ??
+          (event.appliesTo.kind === "nodes"
+            ? tooMany(
+                "nodes on one effect",
+                event.appliesTo.nodeIds,
+                LIMITS.appliesTo,
+              )
+            : null) ??
+          findEffectPropsProblem(
+            event.kind,
+            event.effectDefinitionId,
+            event.props,
+          );
+        if (problem) return problem;
+      }
+    }
+    return null;
+  }
+
+  const playlist = doc as PlaylistFields;
+  return (
+    tooLong("The name", playlist.name, LIMITS.name) ??
+    tooMany("sequences", playlist.sequenceIds, LIMITS.sequenceIds)
+  );
+};
+
+/**
+ * A row as it's stored: each effect's props parsed by its schema (so only the
+ * fields the effect takes are kept). Call after findRowProblem passes.
+ */
+export const normalizeRow = <
+  D extends NodeFields | SequenceFields | PlaylistFields,
+>(
+  table: EditorTable,
+  doc: D,
+): D => {
+  if (table !== "sequences") return doc;
+  const sequence = doc as SequenceFields;
+  return {
+    ...sequence,
+    tracks: sequence.tracks.map((track) => ({
+      ...track,
+      events: track.events.map((event) => {
+        const parsed = parseEffectProps(
           event.kind,
           event.effectDefinitionId,
           event.props,
         );
-        if (problem) return problem;
-      }
-    return null;
-  }
-
-  return null;
+        if (!parsed.ok || parsed.props === undefined) {
+          const { props: _props, ...rest } = event;
+          return rest;
+        }
+        return { ...event, props: parsed.props };
+      }),
+    })),
+  } as D;
 };
 
 /** Why a virtual string's segments don't fit the strings they point at, or null. */
@@ -124,19 +276,21 @@ export const repairReferences = (
   const { nodes, sequences, playlists } = rows;
 
   const isFolder = (key: string) => nodes.get(key)?.kind === "folder";
-  const nearestFolder = (start: string | null) => {
+  // The nearest folder above a deleted one that's still there, never the
+  // node being moved itself.
+  const nearestFolder = (start: string | null, self: string) => {
     const seen = new Set<string>();
     let key = start;
-    while (key !== null && !isFolder(key) && !seen.has(key)) {
+    while (key !== null && (key === self || !isFolder(key)) && !seen.has(key)) {
       seen.add(key);
       key = formerParents.get(key) ?? null;
     }
-    return key !== null && isFolder(key) ? key : null;
+    return key !== null && key !== self && isFolder(key) ? key : null;
   };
 
   for (const [key, node] of nodes)
     if (node.parentId !== null && !isFolder(node.parentId)) {
-      const parentId = nearestFolder(node.parentId);
+      const parentId = nearestFolder(node.parentId, key);
       nodes.set(key, { ...node, parentId });
       repairs.push({
         table: "nodes",
@@ -144,6 +298,18 @@ export const repairReferences = (
         reason: parentId
           ? `Its folder was deleted, so it moved to ${parentId}.`
           : "Its folder was deleted, so it moved to the top level.",
+      });
+    }
+
+  // Moving children up can close a loop (A moved under B while B, A's old
+  // child, is deleted). Break any loop at the top level.
+  for (const [key, node] of nodes)
+    if (hasParentCycle(key, nodes)) {
+      nodes.set(key, { ...node, parentId: null });
+      repairs.push({
+        table: "nodes",
+        key,
+        reason: "Its folders went in a loop, so it moved to the top level.",
       });
     }
 

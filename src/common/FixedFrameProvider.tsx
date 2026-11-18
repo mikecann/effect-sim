@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { Signal } from "../../shared/Signal";
+import { clampFps } from "./utils/fps";
 import { observer } from "mobx-react-observer";
 
 export type FrameContextValue = {
@@ -9,11 +10,12 @@ export type FrameContextValue = {
   frameMs: number;
 };
 
-const FrameContext = createContext<FrameContextValue | null>(null);
+export const FrameContext = createContext<FrameContextValue | null>(null);
 
 export const FrameProvider = observer(
   ({ children, fps = 60 }: { children: ReactNode; fps?: number }) => {
-    const clampedFps = fps > 0 ? fps : 60;
+    // A bad project setting (Infinity, 1e12) mustn't spin the frame loop.
+    const clampedFps = clampFps(fps);
     const frameMs = 1000 / clampedFps;
 
     // Stable signal instance

@@ -1,4 +1,3 @@
-import { logger } from "./utils/logger";
 import { reachOut } from "../shared/outsideWorld";
 
 // The display's mains power is a smart plug in Home Assistant ("Xmas Lights
@@ -45,8 +44,8 @@ export const readPlug = async (): Promise<boolean | null> => {
   return null; // "unavailable" or "unknown"
 };
 
+/** Throws if Home Assistant refuses or doesn't answer (display/plug.ts retries). */
 export const switchPlug = async (on: boolean) => {
-  logger.info(`Switching the lights' plug ${on ? "on" : "off"}`);
   await call("POST", `/api/services/switch/turn_${on ? "on" : "off"}`, {
     entity_id: entityId,
   });

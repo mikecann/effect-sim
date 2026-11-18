@@ -2,14 +2,14 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { hwirMutation } from "./auth";
 import { hwirPresence } from "./machines";
-import { hwirStringStatusValidator } from "./schema";
+import { hwirPlugStatusValidator, hwirStringStatusValidator } from "./schema";
 
 // HWIR's heartbeat (convex/hwirPresence.ts), and what the editor and phone
 // read of it.
 
 /**
- * HWIR is running: what it runs, its frame rate and how each string is
- * connected. Sent every 10 s (HEARTBEAT_INTERVAL_MS).
+ * HWIR is running: what it runs, the frame rate it really manages, how each
+ * string is connected and the plug. Sent every 10 s (HEARTBEAT_INTERVAL_MS).
  */
 export const heartbeat = hwirMutation({
   args: {
@@ -17,9 +17,10 @@ export const heartbeat = hwirMutation({
     commit: v.string(),
     fps: v.number(),
     strings: v.array(hwirStringStatusValidator),
+    plug: v.optional(hwirPlugStatusValidator),
   },
   returns: v.null(),
-  handler: async (ctx, { projectId, commit, fps, strings }) => {
+  handler: async (ctx, { projectId, commit, fps, strings, plug }) => {
     const row = await ctx.db
       .query("hwirPresences")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -27,12 +28,17 @@ export const heartbeat = hwirMutation({
     if (!row) {
       await hwirPresence.create(
         ctx,
-        { projectId, commit, fps, strings },
+        { projectId, commit, fps, strings, plug },
         { type: "HEARTBEAT" },
       );
       return null;
     }
-    await ctx.db.patch("hwirPresences", row._id, { commit, fps, strings });
+    await ctx.db.patch("hwirPresences", row._id, {
+      commit,
+      fps,
+      strings,
+      plug,
+    });
     await hwirPresence.send(ctx, row._id, { type: "HEARTBEAT" });
     return null;
   },
@@ -53,6 +59,7 @@ export const presence = query({
       commit: row.commit,
       fps: row.fps,
       strings: row.strings,
+      plug: row.plug ?? null,
     };
   },
 });

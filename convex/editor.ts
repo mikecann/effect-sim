@@ -12,6 +12,8 @@ import {
 import {
   findRowProblem,
   findSegmentRangeProblem,
+  normalizeRow,
+  LIMITS,
   hasParentCycle,
   repairReferences,
   stableStringify,
@@ -176,8 +178,21 @@ export const sync = editorMutation({
 
     for (const change of changes) {
       if (change.table === "projects") {
+        const problem = findRowProblem("projects", change.doc);
+        if (problem) {
+          result.rejected.push({ table: "projects", key: "", reason: problem });
+          continue;
+        }
         projectFields = { ...project, ...change.doc };
         result.applied++;
+        continue;
+      }
+      if (change.key.length > LIMITS.key || change.key.length === 0) {
+        result.rejected.push({
+          table: change.table,
+          key: change.key.slice(0, LIMITS.key),
+          reason: `A key is 1 to ${LIMITS.key} characters.`,
+        });
         continue;
       }
       const table = rows[change.table] as Map<string, unknown>;
@@ -203,6 +218,32 @@ export const sync = editorMutation({
         });
         continue;
       }
+      // A create of a row that's already saved is a retry if it matches, and
+      // never overwrites it if it doesn't: an editor that missed newer
+      // changes mustn't put back its old copy.
+      const stored = docs[change.table].get(change.key);
+      if (change.op === "create" && stored) {
+        const {
+          _id,
+          _creationTime,
+          projectId: _p,
+          key: _k,
+          ...fields
+        } = stored;
+        if (
+          stableStringify(fields) ===
+          stableStringify(normalizeRow(change.table, change.doc))
+        )
+          result.applied++;
+        else
+          result.skipped.push({
+            table: change.table,
+            key: change.key,
+            reason:
+              "It's already saved with newer changes, so the server's version was kept.",
+          });
+        continue;
+      }
       const problem = findRowProblem(change.table, change.doc);
       if (problem) {
         result.rejected.push({
@@ -215,7 +256,7 @@ export const sync = editorMutation({
       remember(change.table, change.key);
       if (change.table === "nodes")
         formerParents.set(change.key, change.doc.parentId);
-      table.set(change.key, change.doc);
+      table.set(change.key, normalizeRow(change.table, change.doc));
       result.applied++;
     }
 
