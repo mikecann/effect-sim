@@ -68,7 +68,7 @@ export default function SimulatorPanel({ id }: { id: string }) {
             intensity={project.settings.nightMode ? 0.1 : 1.2}
           />
           <GardenModel isDraggingRef={isDraggingRef} />
-          <MeasureTool />
+          {app.isMeasureMode ? <MeasureTool /> : null}
           {app.isMeasureMode ? null : <SimulatorControls />}
           {app.placingTool ? <StringPlacer tool={app.placingTool} /> : null}
           <StringsRenderer />

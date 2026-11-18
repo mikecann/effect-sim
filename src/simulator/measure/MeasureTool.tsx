@@ -2,26 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Html, Line } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useSimulator } from "../SimulatorContext";
 
+/** Measures between two clicked points. Mounted only in measure mode, so it starts fresh each time. */
 export default function MeasureTool() {
-  const enabled = useSimulator().app.isMeasureMode;
-  const { gl, camera, scene } = useThree();
+  const get = useThree((s) => s.get);
   const [firstPoint, setFirstPoint] = useState<THREE.Vector3 | null>(null);
   const [secondPoint, setSecondPoint] = useState<THREE.Vector3 | null>(null);
   const raycasterRef = useRef(new THREE.Raycaster());
   const pointerNdc = useRef(new THREE.Vector2());
 
   useEffect(() => {
-    if (!enabled) {
-      setFirstPoint(null);
-      setSecondPoint(null);
-      return;
-    }
-
+    const { gl, camera, scene } = get();
     const dom = gl.domElement;
     const previousCursor = dom.style.cursor;
-    // eslint-disable-next-line react-hooks/immutability
     dom.style.cursor = "crosshair";
 
     const handlePointerDown = (e: PointerEvent) => {
@@ -68,7 +61,7 @@ export default function MeasureTool() {
       dom.style.cursor = previousCursor;
       dom.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, [enabled, gl.domElement, camera, scene, firstPoint, secondPoint]);
+  }, [get, firstPoint, secondPoint]);
 
   const linePoints = useMemo(() => {
     if (!firstPoint || !secondPoint) return null;
@@ -85,8 +78,6 @@ export default function MeasureTool() {
     if (!firstPoint || !secondPoint) return null;
     return firstPoint.clone().add(secondPoint).multiplyScalar(0.5);
   }, [firstPoint, secondPoint]);
-
-  if (!enabled) return null;
 
   return (
     <group userData={{ __measure: true }}>

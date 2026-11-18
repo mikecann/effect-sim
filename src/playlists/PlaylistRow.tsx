@@ -89,7 +89,6 @@ export function PlaylistRow({ playlist }: PlaylistRowProps) {
               });
               if (!confirmed) return;
               project.removePlaylist(playlist);
-              //playlist.remove();
               if (isSelected) appModel.setSelectedEntity(null);
             }}
           >

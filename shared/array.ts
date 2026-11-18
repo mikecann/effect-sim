@@ -22,11 +22,6 @@ export const hasDuplicates = <T extends string>(array: T[]): boolean =>
   new Set(array).size != array.length;
 
 export const partition = <T>(items: T[], numChunks: number): T[][] => {
-  // const chunks: T[][] = [];
-  // const chunkSize = Math.ceil(items.length / numChunks);
-  // for (let i = 0; i < numChunks; i++) chunks.push(items.slice(i * chunkSize, chunkSize));
-  // return chunks;
-
   const newArray: T[][] = [];
   for (let c = 0; c < numChunks; c++) 
     newArray.push([]);
@@ -91,24 +86,6 @@ export const sumNumbers = (arr: number[]): number => {
   for (const a of arr) val += a;
   return val;
 };
-
-// export const getNextInRotation = <T extends string>({
-//   item,
-//   rotation,
-//   rotationIncrement = 1,
-// }: {
-//   item: T;
-//   rotation: T[];
-//   rotationIncrement?: number;
-// }): T => {
-//   if (rotation.length == 0)
-//     throw new Error(`cannot get next in rotation when the rotation is empty`);
-//   let index = rotation.indexOf(item);
-//   if (index == -1) return ensure(rotation[0]);
-//   index += rotationIncrement;
-//   index = wrap(index, 0, rotation.length - 1);
-//   return ensure(rotation[index]);
-// };
 
 type Indices<L extends number, T extends number[] = []> = T["length"] extends L
   ? T[number]

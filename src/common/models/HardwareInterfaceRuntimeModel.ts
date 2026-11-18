@@ -57,7 +57,6 @@ export class HardwareInterfaceRuntimeModel {
       ws.onopen = () => {
         this.setStatus("open");
         this.setLastError(null);
-        console.log(`[WS] Connected to ${this.wsUrl}`);
       };
 
       ws.onclose = (ev: CloseEvent) => {
@@ -103,7 +102,6 @@ export class HardwareInterfaceRuntimeModel {
     }
 
     this.setStatus("closing");
-    console.log("[WS] Disconnect requested");
     ws.close();
   }
 

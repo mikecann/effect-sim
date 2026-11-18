@@ -4,11 +4,6 @@
       "count": 1
     }
   },
-  "src/common/Portal.tsx": {
-    "@eslint-community/eslint-comments/require-description": {
-      "count": 1
-    }
-  },
   "src/common/confirmation/ConfirmationProvider.tsx": {
     "@eslint-community/eslint-comments/require-description": {
       "count": 1
@@ -41,17 +36,6 @@
   },
   "src/sequencer/tracks/TracksColumn/TrackListItem.tsx": {
     "mikecann-lint/click-shows-progress": {
-      "count": 1
-    }
-  },
-  "src/simulator/measure/MeasureTool.tsx": {
-    "@eslint-community/eslint-comments/require-description": {
-      "count": 1
-    },
-    "react-hooks/immutability": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
       "count": 1
     }
   },

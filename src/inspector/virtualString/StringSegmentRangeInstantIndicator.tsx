@@ -41,11 +41,7 @@ export const StringSegmentRangeInstantIndicator = observer(() => {
 
   // Manage WebSocket connection
   useEffect(() => {
-    console.log("ipAddress", ipAddress);
-
     if (!ipAddress) return;
-
-    console.log("Connecting to WebSocket", ipAddress);
 
     const ws = new WebSocket(`ws://${ipAddress}/ws`);
     wsRef.current = ws;
@@ -54,14 +50,6 @@ export const StringSegmentRangeInstantIndicator = observer(() => {
       const { ledCount, start, end } = stateRef.current;
       if (ledCount === undefined || start === undefined || end === undefined)
         return;
-
-      console.log(
-        "WS Connected, setting segment indicator color",
-        ipAddress,
-        ledCount,
-        start,
-        end,
-      );
 
       ws.send(
         JSON.stringify({

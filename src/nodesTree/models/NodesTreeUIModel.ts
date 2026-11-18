@@ -34,9 +34,6 @@ export class NodesTreeUIModel {
     makeAutoObservable(this, {
       app: false,
     });
-
-    // const persistedData = app.persistedData.nodesTrees?.[id];
-    // this.expandedItems = persistedData?.expandedItems ?? [];
   }
 
   get project() {
