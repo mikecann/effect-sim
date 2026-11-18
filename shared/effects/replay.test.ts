@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createElement } from "react";
+import { createElement, StrictMode } from "react";
 import { render } from "react-nil";
 import { makeAutoObservable, runInAction } from "mobx";
 import {
   EffectScopeContext,
   FrameCatchUp,
   framesToRun,
+  MAX_REPLAY_FRAMES,
+  SLICE_FRAMES,
   type EffectTiming,
 } from "./api";
 import { stringEffects } from "./registry";
@@ -71,11 +73,19 @@ const run = async (
 
 describe("frames run once each, in order", () => {
   it("works out which frames to run", () => {
-    expect(framesToRun(null, 3)).toEqual([0, 1, 2, 3]);
-    expect(framesToRun(3, 3)).toEqual([]);
-    expect(framesToRun(3, 4)).toEqual([4]);
-    expect(framesToRun(3, 6)).toEqual([4, 5, 6]);
-    expect(framesToRun(6, 2)).toEqual([0, 1, 2]);
+    expect(framesToRun(null, 3, 100)).toEqual({ from: 0, to: 3 });
+    expect(framesToRun(3, 3, 100)).toBeNull();
+    expect(framesToRun(3, 4, 100)).toEqual({ from: 4, to: 4 });
+    expect(framesToRun(3, 6, 100)).toEqual({ from: 4, to: 6 });
+    expect(framesToRun(6, 2, 100)).toEqual({ from: 0, to: 2 });
+    // Never past the event's last frame.
+    expect(framesToRun(null, 120, 100)).toEqual({ from: 0, to: 100 });
+    expect(framesToRun(100, 101, 100)).toBeNull();
+    // A replay goes back at most MAX_REPLAY_FRAMES.
+    expect(framesToRun(null, 900_000, 1_000_000)).toEqual({
+      from: 900_000 - MAX_REPLAY_FRAMES,
+      to: 900_000,
+    });
   });
 
   it("replays several effects frame by frame in playing order", async () => {
@@ -83,22 +93,11 @@ describe("frames run once each, in order", () => {
     const catchUp = new FrameCatchUp(() => 10);
     const ran: string[] = [];
     const add = (name: string, effectFrame: number) =>
-      catchUp.add(
-        effectFrame,
-        Array.from({ length: effectFrame + 1 }, (_, i) => i),
-        (f) => ran.push(`${name}${f}`),
-      );
+      catchUp.add(effectFrame, 0, effectFrame, (f) => ran.push(`${name}${f}`));
     add("starting", 0);
     add("a", 10);
     add("b", 5);
     await settle();
-    const at = (frame: number) =>
-      ran.filter(
-        (r) =>
-          r === `a${frame}` ||
-          r === `b${frame - 5}` ||
-          (frame === 10 && r === "starting0"),
-      );
     expect(ran).toHaveLength(11 + 6 + 1);
     // At frame 5, a's sixth frame runs before b's first (b mounts then).
     expect(ran.indexOf("a5")).toBeLessThan(ran.indexOf("b0"));
@@ -106,8 +105,73 @@ describe("frames run once each, in order", () => {
     expect(ran.indexOf("a6")).toBeLessThan(ran.indexOf("b1"));
     expect(ran.indexOf("b1")).toBeLessThan(ran.indexOf("a7"));
     // The event starting now runs its first frame last.
-    expect(ran.at(-1)).toBe("starting0");
-    expect(at(10)).toEqual(["a10", "b5", "starting0"]);
+    expect(ran.slice(-3)).toEqual(["a10", "b5", "starting0"]);
+  });
+
+  it("catches up in short slices, so a huge replay never blocks a tick", async () => {
+    const slices: Array<() => void> = [];
+    const catchUp = new FrameCatchUp(
+      () => 900_000,
+      (slice) => slices.push(slice),
+    );
+    let ran = 0;
+    const window = framesToRun(null, 900_000, 1_000_000);
+    if (!window) throw new Error("expected frames to run");
+    const handle = catchUp.add(900_000, window.from, window.to, () => ran++);
+    // The first slice runs once the mounting effects are in, and no more.
+    await settle();
+    expect(ran).toBe(SLICE_FRAMES);
+    // New frames for the effect wait behind its replay.
+    handle.extendTo(900_002);
+    let most = 0;
+    while (slices.length > 0) {
+      const before = ran;
+      slices.shift()?.();
+      most = Math.max(most, ran - before);
+    }
+    expect(most).toBeLessThanOrEqual(SLICE_FRAMES);
+    expect(ran).toBe(MAX_REPLAY_FRAMES + 1 + 2);
+    expect(handle.done).toBe(true);
+  });
+
+  it("keeps a slice of a big string's frames to a few milliseconds", () => {
+    // 2,000 LEDs, the size of the whole house as one virtual string.
+    const data = new Uint8Array(2000 * 3);
+    const frame = () => {
+      for (let i = 0; i < data.length; i++) data[i] = (data[i] * 0.9) | 0;
+    };
+    const start = performance.now();
+    for (let i = 0; i < SLICE_FRAMES; i++) frame();
+    expect(performance.now() - start).toBeLessThan(20);
+  });
+
+  it("keeps running under StrictMode's setup, cleanup, setup", async () => {
+    const string = new PreviewString();
+    const timing = new Timing();
+    const scope = { timing, target: string.key };
+    const effect = stringEffects.find((e) => e.id === "comet");
+    if (!effect) throw new Error("no comet");
+    render(
+      createElement(
+        StrictMode,
+        null,
+        createElement(
+          EffectScopeContext.Provider,
+          { value: scope },
+          createElement(effect.Run, { string, rawProps: effect.defaults }),
+        ),
+      ),
+    );
+    await settle();
+    for (let frame = 1; frame <= 30; frame++) {
+      runInAction(() => timing.setFrame(frame));
+      await settle();
+    }
+    // The comet has moved half way along: its head is lit.
+    const head = Math.floor((30 / DURATION) * string.ledCount);
+    expect(string.getPixel(head)).toEqual([255, 255, 255]);
+    render(null);
+    await settle();
   });
 
   const target = 41;

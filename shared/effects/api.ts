@@ -45,52 +45,118 @@ export interface EffectTiming {
 }
 
 /**
+ * At most this many frames are replayed when an effect starts part-way
+ * through (about 10 s at 120 fps): further back, its state is approximate.
+ */
+export const MAX_REPLAY_FRAMES = 1200;
+
+/**
+ * How many effect frames one slice of catching up runs before the rest waits
+ * for a later tick: a count, not a time, so a replay comes out the same
+ * however busy the machine is. One effect frame on a 200-LED string is a few
+ * microseconds, so a slice stays around a millisecond.
+ */
+export const SLICE_FRAMES = 120;
+
+type CatchUpTask = {
+  /** The playhead frame the event started on. */
+  start: number;
+  /** The next of its frames to run, and the last. */
+  next: number;
+  to: number;
+  run: (frame: number) => void;
+  /** When it was added: the order the effects sit in the sequence. */
+  order: number;
+  cancelled: boolean;
+};
+
+/** An effect's place in a catch-up: more frames can join it, or it can be dropped. */
+export type CatchUpHandle = {
+  readonly done: boolean;
+  extendTo(frame: number): void;
+  cancel(): void;
+};
+
+/**
  * Lines up the replays of several effects frame by frame, as playing would
  * have run them, so effects sharing a string (one fading what another lit)
- * end the same either way. The sequence runtime gives one to its effects.
+ * end the same either way. It works in slices of SLICE_FRAMES, carrying on
+ * in later ticks, so a long replay never stalls HWIR's frame loop; an effect
+ * still catching up queues its new frames here rather than running ahead.
+ * The sequence runtime gives one to its effects.
  */
 export class FrameCatchUp {
-  private tasks: Array<{
-    start: number;
-    frames: number[];
-    run: (frame: number) => void;
-  }> = [];
+  private tasks: CatchUpTask[] = [];
+  private added = 0;
+  private scheduled = false;
 
   /** `now` is the playhead's frame, which places each event in time. */
-  constructor(private readonly now: () => number) {}
+  constructor(
+    private readonly now: () => number,
+    private readonly later: (slice: () => void) => void = (slice) =>
+      setTimeout(slice, 0),
+  ) {}
 
-  /** Queues an effect's frames; they all run together once the effects mounting now are in. */
-  add(effectFrame: number, frames: number[], run: (frame: number) => void) {
-    if (this.tasks.length === 0) queueMicrotask(() => this.flush());
-    this.tasks.push({ start: this.now() - effectFrame, frames, run });
+  /** Queues frames `from` to `to` of an effect now at `effectFrame`. */
+  add(
+    effectFrame: number,
+    from: number,
+    to: number,
+    run: (frame: number) => void,
+  ): CatchUpHandle {
+    const task: CatchUpTask = {
+      start: this.now() - effectFrame,
+      next: from,
+      to,
+      run,
+      order: this.added++,
+      cancelled: false,
+    };
+    this.tasks.push(task);
+    if (!this.scheduled) {
+      this.scheduled = true;
+      // The first slice runs once the effects mounting now are all in.
+      queueMicrotask(() => this.slice());
+    }
+    return {
+      get done() {
+        return task.cancelled || task.next > task.to;
+      },
+      extendTo: (frame) => {
+        task.to = Math.max(task.to, frame);
+      },
+      cancel: () => {
+        task.cancelled = true;
+      },
+    };
   }
 
-  private flush() {
-    const tasks = this.tasks;
-    this.tasks = [];
-    const steps = tasks.flatMap((task, order) =>
-      task.frames.map((frame) => ({
-        at: task.start + frame,
-        order,
-        frame,
-        task,
-      })),
-    );
-    // In playing order: by frame; within a frame, effects already running
-    // first (in the order they sit in the sequence, as a re-render
-    // recreates their frame handlers in that order), then events starting
-    // on that frame, which mount after the playhead reaches it.
-    steps.sort(
-      (a, b) =>
-        a.at - b.at ||
-        Number(a.frame === 0) - Number(b.frame === 0) ||
-        a.order - b.order,
-    );
+  /** Whether `a` comes before `b` when playing: by frame, then effects already running, then in sequence order. */
+  private static before(a: CatchUpTask, b: CatchUpTask) {
+    const at = a.start + a.next - (b.start + b.next);
+    if (at !== 0) return at < 0;
+    const starting = Number(a.next === 0) - Number(b.next === 0);
+    if (starting !== 0) return starting < 0;
+    return a.order < b.order;
+  }
+
+  private slice() {
     // In one action, as a frame's autoruns would be, so the strings' computed
     // values (a virtual string's pixels) are worked out once, not per LED.
     runInAction(() => {
-      for (const step of steps) step.task.run(step.frame);
+      for (let ran = 0; ran < SLICE_FRAMES; ran++) {
+        let first: CatchUpTask | null = null;
+        for (const task of this.tasks)
+          if (!task.cancelled && task.next <= task.to)
+            if (!first || FrameCatchUp.before(task, first)) first = task;
+        if (!first) break;
+        first.run(first.next);
+        first.next++;
+      }
     });
+    this.tasks = this.tasks.filter((t) => !t.cancelled && t.next <= t.to);
+    if (this.tasks.length > 0) this.later(() => this.slice());
+    else this.scheduled = false;
   }
 }
 
@@ -138,15 +204,25 @@ const frameOf = (
   random: createRandom(hashSeed(timing.seed, target, frame, loopCount)),
 });
 
-/** Which frames to run to bring an effect from the last frame it ran up to `frame`. */
-export const framesToRun = (last: number | null, frame: number): number[] => {
+/**
+ * The frames to run to bring an effect from the last frame it ran up to
+ * `frame` (and no further than its last, `duration`), or null for none.
+ */
+export const framesToRun = (
+  last: number | null,
+  frame: number,
+  duration: number,
+): { from: number; to: number } | null => {
   // The same frame again (a re-render made a new handler): nothing to do.
-  if (last === frame) return [];
+  if (last === frame) return null;
   // The next frames: run each one, so a dropped frame still counts.
   // Starting, or going back (a new loop, or a jump): replay from the event's
-  // start, so landing on a frame gives what playing up to it would.
-  const from = last !== null && last < frame ? last + 1 : 0;
-  return Array.from({ length: frame - from + 1 }, (_, i) => from + i);
+  // start, so landing on a frame gives what playing up to it would, up to
+  // MAX_REPLAY_FRAMES back.
+  const resume = last !== null && last < frame ? last + 1 : 0;
+  const from = Math.max(resume, frame - MAX_REPLAY_FRAMES);
+  const to = Math.min(frame, duration);
+  return from <= to ? { from, to } : null;
 };
 
 /**
@@ -161,36 +237,45 @@ export const framesToRun = (last: number | null, frame: number): number[] => {
 export function useEffectFrame(handler: (frame: EffectFrame) => void): void {
   const { timing, target, catchUp } = useEffectScope();
   const last = useRef<number | null>(null);
+  const pending = useRef<CatchUpHandle | null>(null);
   // A replay queued before the effect unmounted (the runtime starting over)
-  // must not write to the LEDs after it's gone.
+  // must not write to the LEDs after it's gone. Set again on every setup, as
+  // StrictMode sets effects up, cleans them up and sets them up again.
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   useEffect(
     () =>
       autorun(() => {
         const frame = timing.effectFrame;
         // Read, not followed: a new loop shows up as the frame going back.
         const loopCount = untracked(() => timing.loopCount);
-        // An event's last frame is its duration; one replayed after it
-        // ended (a jump past it) stops there, as playing would have.
-        const starting = last.current === null;
-        const frames = framesToRun(last.current, frame).filter(
-          (f) => f <= timing.duration,
-        );
-        last.current = frame;
         const run = (f: number) => {
           if (mounted.current) handler(frameOf(timing, target, f, loopCount));
         };
+        const starting = last.current === null;
+        const goingOn = last.current !== null && frame > last.current;
+        // Still catching up: new frames queue behind the replay.
+        if (goingOn && pending.current && !pending.current.done) {
+          pending.current.extendTo(Math.min(frame, timing.duration));
+          last.current = frame;
+          return;
+        }
+        if (!goingOn) pending.current?.cancel();
+        const frames = framesToRun(last.current, frame, timing.duration);
+        last.current = frame;
+        if (!frames) return;
         // A replay, or an effect just mounting, waits for the others
         // mounting with it, so they all run in playing order.
-        if ((frames.length > 1 || starting) && catchUp)
-          catchUp.add(frame, frames, run);
-        else frames.forEach(run);
+        if ((frames.to > frames.from || starting) && catchUp) {
+          pending.current = catchUp.add(frame, frames.from, frames.to, run);
+          return;
+        }
+        for (let f = frames.from; f <= frames.to; f++) run(f);
       }),
     [timing, target, catchUp, handler],
   );
