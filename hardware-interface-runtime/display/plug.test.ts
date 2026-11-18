@@ -91,9 +91,35 @@ describe("PlugSwitcher", () => {
     expect(f.external).toEqual([]);
   });
 
-  it("retries with backoff after a failed first try, until it works", async () => {
+  it("never retries ON: a failed ON is reported and the display follows the plug", async () => {
+    // 9:59:30pm: the plug is already off and the phone asks for ON, but Home
+    // Assistant fails. A retry that worked at 22:00:22 would leave the lights
+    // on all night, as the 10pm OFF changed nothing.
     const f = fakePlug(false);
     const first = f.switcher.switchTo(true);
+    f.calls[0].finish(false);
+    expect(await first).toBe(false);
+    await flush();
+    expect(f.calls).toHaveLength(1);
+    expect(f.waits).toHaveLength(0);
+    expect(f.switcher.busy).toBe(false);
+    expect(f.switcher.status).toMatchObject({ kind: "failing", on: true });
+    // So the 10 s plug check puts the phone back to what the plug says.
+    expect(
+      followPlug({
+        status: "live",
+        isOn: true,
+        requestedAt: null,
+        plugOn: false,
+        plugBusy: f.switcher.busy,
+        appliedRequestedAt: null,
+      }),
+    ).toEqual({ kind: "report", isOn: false });
+  });
+
+  it("retries OFF with backoff after failures, until a try works", async () => {
+    const f = fakePlug(true);
+    const first = f.switcher.switchTo(false);
     f.calls[0].finish(false);
     expect(await first).toBe(false);
     expect(f.switcher.status).toMatchObject({ kind: "failing", tries: 1 });
@@ -101,69 +127,68 @@ describe("PlugSwitcher", () => {
       await flush();
       f.waits[i - 1].release();
       await flush();
-      f.calls[i].finish(i === 3);
+      f.calls[i].finish(i === 3); // two more failures, then it works
     }
     await flush();
     expect(f.waits.map((w) => w.ms)).toEqual(PLUG_RETRY_DELAYS_MS.slice(0, 3));
-    expect(f.plug.on).toBe(true);
+    expect(f.calls.map((c) => c.on)).toEqual([false, false, false, false]);
+    expect(f.plug.on).toBe(false);
     expect(f.switcher.busy).toBe(false);
     expect(f.changes.map((c) => c.kind)).toEqual(["failing", "ok"]);
   });
 
-  it("stops retrying and follows Home Assistant when it switches the plug meanwhile", async () => {
-    // 9:59pm: the phone asks for ON, but Home Assistant's API keeps failing.
+  it("stops retrying OFF and follows Home Assistant when it switches the plug meanwhile", async () => {
     const f = fakePlug(true);
-    f.setPlug(false); // someone turned it off before
     f.tick(1_000);
-    const first = f.switcher.switchTo(true);
+    const first = f.switcher.switchTo(false);
     f.calls[0].finish(false);
     await first;
     await flush();
-    // 10pm: the automation switches it (here: on, then its off lands).
-    f.tick(60_000);
-    f.setPlug(true);
-    f.tick(1);
+    // Someone turns it off and on again at the wall.
+    f.tick(10_000);
     f.setPlug(false);
-    f.waits[0].release();
-    await flush();
-    expect(f.calls).toHaveLength(1); // no retry turning it back on
-    expect(f.external).toEqual([false]);
-    expect(f.switcher.busy).toBe(false);
-  });
-
-  it("keeps retrying when the plug just came back online", async () => {
-    const f = fakePlug(false);
-    f.setPlug(null); // unavailable: that's why switching fails
-    f.tick(1_000);
-    const first = f.switcher.switchTo(true);
-    f.calls[0].finish(false);
-    await first;
-    await flush();
-    f.tick(5_000);
-    f.setPlug(false); // reconnected, still off
-    f.waits[0].release();
-    await flush();
-    expect(f.external).toEqual([]);
-    expect(f.calls.map((c) => c.on)).toEqual([true, true]);
-  });
-
-  it("stops when the plug is already at the target", async () => {
-    const f = fakePlug(false);
-    const first = f.switcher.switchTo(true);
-    f.calls[0].finish(false);
-    await first;
-    await flush();
+    f.tick(1);
     f.setPlug(true);
     f.waits[0].release();
     await flush();
     expect(f.calls).toHaveLength(1);
+    expect(f.external).toEqual([true]);
     expect(f.switcher.busy).toBe(false);
-    expect(f.switcher.status).toMatchObject({ kind: "ok", on: true });
+  });
+
+  it("keeps retrying OFF when the plug just came back online", async () => {
+    const f = fakePlug(true);
+    f.setPlug(null); // unavailable: that's why switching fails
+    f.tick(1_000);
+    const first = f.switcher.switchTo(false);
+    f.calls[0].finish(false);
+    await first;
+    await flush();
+    f.tick(5_000);
+    f.setPlug(true); // reconnected, still on
+    f.waits[0].release();
+    await flush();
+    expect(f.external).toEqual([]);
+    expect(f.calls.map((c) => c.on)).toEqual([false, false]);
+  });
+
+  it("stops retrying when the plug is already at the target", async () => {
+    const f = fakePlug(true);
+    const first = f.switcher.switchTo(false);
+    f.calls[0].finish(false);
+    await first;
+    await flush();
+    f.setPlug(false);
+    f.waits[0].release();
+    await flush();
+    expect(f.calls).toHaveLength(1);
+    expect(f.switcher.busy).toBe(false);
+    expect(f.switcher.status).toMatchObject({ kind: "ok", on: false });
   });
 
   it("cancel stops the retries straight away", async () => {
-    const f = fakePlug(false);
-    const first = f.switcher.switchTo(true);
+    const f = fakePlug(true);
+    const first = f.switcher.switchTo(false);
     f.calls[0].finish(false);
     await first;
     await flush();
@@ -176,24 +201,21 @@ describe("PlugSwitcher", () => {
   });
 
   it("a new target interrupts a retry wait and goes first", async () => {
-    const f = fakePlug(false);
-    const first = f.switcher.switchTo(true);
+    const f = fakePlug(true);
+    const first = f.switcher.switchTo(false);
     f.calls[0].finish(false);
     await first;
     await flush();
-    const off = f.switcher.switchTo(false);
+    const on = f.switcher.switchTo(true);
     await flush();
-    expect(f.calls.map((c) => c.on)).toEqual([true, false]);
+    expect(f.calls.map((c) => c.on)).toEqual([false, true]);
     f.calls[1].finish(true);
-    expect(await off).toBe(true);
+    expect(await on).toBe(true);
   });
 
-  it("gives up after about two minutes, still reporting the failure", async () => {
-    // 9:59pm: the phone asks for ON and Home Assistant keeps failing. The
-    // plug was already off, so the 10pm automation changes nothing HWIR can
-    // see: only the time limit stops a late ON.
-    const f = fakePlug(false);
-    const first = f.switcher.switchTo(true);
+  it("gives up retrying OFF after about two minutes, still reporting the failure", async () => {
+    const f = fakePlug(true);
+    const first = f.switcher.switchTo(false);
     f.calls[0].finish(false);
     await first;
     let elapsed = 0;
@@ -211,19 +233,7 @@ describe("PlugSwitcher", () => {
     expect(f.switcher.busy).toBe(false);
     expect(elapsed).toBeLessThanOrEqual(PLUG_RETRY_FOR_MS);
     expect(f.calls.length).toBe(PLUG_RETRY_DELAYS_MS.length + 1);
-    expect(f.calls.every((c) => c.on)).toBe(true);
-    expect(f.switcher.status).toMatchObject({ kind: "failing", on: true });
-    // And the follower, now that the switcher isn't busy, adopts the plug.
-    expect(
-      followPlug({
-        status: "live",
-        isOn: true,
-        requestedAt: null,
-        plugOn: false,
-        plugBusy: f.switcher.busy,
-        appliedRequestedAt: null,
-      }),
-    ).toEqual({ kind: "report", isOn: false });
+    expect(f.switcher.status).toMatchObject({ kind: "failing", on: false });
   });
 });
 

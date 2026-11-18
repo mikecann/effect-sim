@@ -170,7 +170,7 @@ const usePlugSwitcher = (model: HWIRAppModel) => {
               logger.info(`The lights' plug is ${status.on ? "on" : "off"}`);
             else
               logger.error(
-                `Couldn't switch the lights' plug ${status.on ? "on" : "off"} (try ${status.tries}): ${status.error}; retrying`,
+                `Couldn't switch the lights' plug ${status.on ? "on" : "off"} (try ${status.tries}): ${status.error}${status.on ? "; not retrying ON, on/off will follow the plug" : "; retrying"}`,
               );
           },
           onExternal: (on) => {

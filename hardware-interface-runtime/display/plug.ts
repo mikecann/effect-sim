@@ -1,7 +1,7 @@
 // The display's mains plug (Home Assistant, homeAssistant.ts): switching it
 // with retries, and following it when something else switches it.
 
-/** Waits between tries when switching the plug fails. The last one repeats. */
+/** Waits between tries when switching the plug OFF fails. */
 export const PLUG_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 45_000];
 
 /**
@@ -40,7 +40,9 @@ type Target = {
  * the old one, and after each call finishes it carries on toward whatever
  * the latest target is, so a slow old call can never land after a newer one.
  *
- * When a switch fails it retries with backoff. Before each retry it reads the
+ * A failed ON is never retried: it's reported (the status stays failing)
+ * and the plug check makes the display follow Home Assistant. A failed OFF,
+ * the safe direction, retries with backoff for about two minutes. Before each retry it reads the
  * plug, and stops if:
  * - the plug is already at the target (someone else did it);
  * - Home Assistant changed it away from the target after this switch started,
@@ -125,7 +127,11 @@ export class PlugSwitcher {
         const worked = await this.attempt(t);
         if (this.target !== t) continue; // replaced while in flight: go to the latest
         t.settle(worked);
-        if (worked) {
+        // ON is never retried: a retry that lands late (after the 10pm
+        // automation found the plug already off) would leave the lights on
+        // all night. The failure is reported, the plug check makes the
+        // display follow the plug, and the phone can ask again.
+        if (worked || t.on) {
           this.target = null;
           break;
         }
