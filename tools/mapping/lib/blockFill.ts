@@ -497,19 +497,19 @@ export type BlockFillReport = {
  * blocks until every gap LED is placed, hidden or unclear, or time runs out.
  */
 /**
- * Up to 400 placed LEDs, spread over every string: none is in a block, so a
- * block photo should leave them dark. The Python side throws a set out when
- * many light up (the lights weren't showing the blocks).
+ * Placed LEDs spread over every string (up to 40 each): none is in a block,
+ * so a block photo should leave them dark. The Python side throws a set out
+ * when many light up, over all or on any one string (the lights weren't
+ * showing the blocks), or when too few are left to check.
  */
-export const knownSample = (decoded: Decoded, max = 400) => {
-  const all = decoded.strings.flatMap((s) =>
-    s.points.flatMap((p) =>
-      p && p.confidence >= 0.3 ? [{ u: p.u, v: p.v }] : [],
-    ),
-  );
-  const every = Math.max(1, Math.ceil(all.length / max));
-  return all.filter((_, i) => i % every === 0);
-};
+export const knownSample = (decoded: Decoded, perString = 40) =>
+  decoded.strings.flatMap((s) => {
+    const placed = s.points.flatMap((p) =>
+      p && p.confidence >= 0.3 ? [{ key: s.key, u: p.u, v: p.v }] : [],
+    );
+    const every = Math.max(1, Math.ceil(placed.length / perString));
+    return placed.filter((_, i) => i % every === 0);
+  });
 
 export const fillBlocks = async (args: {
   decoded: Decoded;

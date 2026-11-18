@@ -679,33 +679,48 @@ def chain_from(start: np.ndarray, peaks: np.ndarray, first_reach: float, reach: 
 
 
 # A block set is thrown out when more than this share of the LEDs already
-# placed (none of them in a block) light up in its frames: the lights
-# weren't showing the blocks. An HWIR rolled back to before block patterns
-# acks them but lights every LED. On the synthetic house with twinkle
-# (18 Nov): every such set lit 100% of them; real block sets at most 28%
-# (glow and twinkle next to a block), most under 5%.
+# placed (none of them in a block) light up in its frames, overall or on any
+# one string: the lights weren't showing the blocks. An HWIR rolled back to
+# before block patterns acks them but lights every LED. On the synthetic
+# house with twinkle (18 Nov): every such set lit 100% of them; real block
+# sets at most 28% (glow and twinkle next to a block), most under 5%. With
+# too few placed LEDs to check, the set isn't trusted either.
 KNOWN_LIT_MAX = 0.6
 KNOWN_MIN_SAMPLES = 20
+KNOWN_MIN_PER_STRING = 8
 
 
 def known_lit(change: np.ndarray, threshold: float, known: list[dict], blocks: list[dict], px, side: float) -> dict:
-    """How many of the placed LEDs (away from every block's regions) are lit
-    in the set's steady change."""
+    """How many of the placed LEDs are lit in the set's steady change, over
+    all and per string, leaving out those where a block was searched for
+    (each block searches the intersection of its regions)."""
     h, w = change.shape
-    inside = np.zeros((h, w), np.uint8)
+    searched = np.zeros((h, w), bool)
     for b in blocks:
-        for r in list(b.get("regions", [])) + list(b.get("fallback") or []):
-            c = px(r)
-            cv2.circle(inside, (int(round(c[0])), int(round(c[1]))), int(round(r["radius"] * side)) + 6, 1, -1)
+        for regs in (b.get("regions") or [], b.get("fallback") or []):
+            if not regs:
+                continue
+            m = np.ones((h, w), np.uint8)
+            for r in regs:
+                one = np.zeros((h, w), np.uint8)
+                c = px(r)
+                cv2.circle(one, (int(round(c[0])), int(round(c[1]))), int(round(r["radius"] * side)) + 6, 1, -1)
+                m &= one
+            searched |= m.astype(bool)
     lit = total = 0
+    per: dict[str, list[int]] = {}
     for k in known:
         x, y = (int(round(v)) for v in px(k))
-        if not (0 <= x < w and 0 <= y < h) or inside[y, x]:
+        if not (0 <= x < w and 0 <= y < h) or searched[y, x]:
             continue
+        on_ = bool(change[max(0, y - 2):y + 3, max(0, x - 2):x + 3].max() > threshold)
         total += 1
-        if change[max(0, y - 2):y + 3, max(0, x - 2):x + 3].max() > threshold:
-            lit += 1
-    return {"knownLit": lit, "knownChecked": total}
+        lit += on_
+        c = per.setdefault(str(k.get("key", "")), [0, 0])
+        c[0] += on_
+        c[1] += 1
+    worst = max((l / t for l, t in per.values() if t >= KNOWN_MIN_PER_STRING), default=0.0)
+    return {"knownLit": lit, "knownChecked": total, "worstStringLit": round(worst, 3)}
 
 
 def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[int] | None = None,
@@ -788,7 +803,9 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
             weights.append(s)
         peaks_a = np.array(peaks)
         weights_a = np.array(weights)
-        # Faint peaks next to strong ones are glare, not LEDs.
+        # Faint peaks next to strong ones are glare, not LEDs. Every detected
+        # peak still counts as a rival when judging which way a chain runs.
+        peaks_all = peaks_a
         keep = weights_a >= 0.08 * weights_a.max()
         peaks_a, weights_a = peaks_a[keep], weights_a[keep]
 
@@ -869,8 +886,8 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
         # row doubling back) could be the block's first LED instead.
         if len(pts) and not ambiguous:
             d_first = float(np.hypot(*(pts[0] - px(anchor))))
-            d_all = np.hypot(*(peaks_a - px(anchor)).T)
-            far = np.hypot(*(peaks_a - pts[0]).T) > step * 0.8
+            d_all = np.hypot(*(peaks_all - px(anchor)).T)
+            far = np.hypot(*(peaks_all - pts[0]).T) > step * 0.8
             rivals = far & (np.abs(d_all - d_first) <= 0.35 * ref)
             # Any spot bright enough to be a peak counts, however dim next to
             # the chain: a weight cut-off only narrows the case (Codex, 18 Nov).
@@ -919,9 +936,12 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
         _, threshold = lit_mask(np.clip(change, 0, None).astype(np.float32))
         check = known_lit(change, threshold, known, blocks, px, side)
         if os.environ.get("MAPPING_DEBUG_OUTSIDE"):
-            open(os.environ["MAPPING_DEBUG_OUTSIDE"], "a").write(f"{check['knownLit']} {check['knownChecked']} {len(blocks)}\n")
-        if (check["knownChecked"] >= KNOWN_MIN_SAMPLES
-                and check["knownLit"] > KNOWN_LIT_MAX * check["knownChecked"]):
+            open(os.environ["MAPPING_DEBUG_OUTSIDE"], "a").write(f"{check['knownLit']} {check['knownChecked']} {check['worstStringLit']}\n")
+        if check["knownChecked"] < KNOWN_MIN_SAMPLES:
+            results = [{"status": "unclear", "why": "too few placed LEDs to check the lights showed the blocks", **check}
+                       for _ in blocks]
+        elif (check["knownLit"] > KNOWN_LIT_MAX * check["knownChecked"]
+                or check["worstStringLit"] > KNOWN_LIT_MAX):
             results = [{"status": "unclear", "why": "LEDs outside the blocks lit too: the lights may not be showing this pattern", **check}
                        for _ in blocks]
 
