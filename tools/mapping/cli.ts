@@ -780,6 +780,11 @@ program
   .option("--height <px>", "", "2160")
   .option("--yaw <deg>", "", "330")
   .option("--seed <n>", "", "7")
+  .option(
+    "--twinkles <n>",
+    "twinkling warm lights near the strings, like the icicle lights",
+    "0",
+  )
   .action(async (opts) => {
     let strings: HouseString[];
     if (opts.project) {
@@ -816,6 +821,7 @@ program
       height: Number(opts.height),
       yawDegrees: Number(opts.yaw),
       seed: Number(opts.seed),
+      twinkles: Number(opts.twinkles),
     });
     writeFileSync(opts.out, JSON.stringify(scene));
     log(
