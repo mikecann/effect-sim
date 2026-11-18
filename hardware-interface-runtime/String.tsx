@@ -3,28 +3,11 @@ import { HWStringModel } from "./models/HWStringModel";
 import { createAndConnectWLEDDDP, WLEDDDPConnection } from "./models/WLED_DDP";
 import { observer } from "mobx-react-lite";
 import { logger } from "./utils/logger";
-import { isLive, runMode } from "./runMode";
 
 export const String = observer(({ model }: { model: HWStringModel }) => {
   const [connection, setConnection] = useState<WLEDDDPConnection | null>(null);
 
-  // Not live: no UDP or WLED calls. Dry runs say once what they'd have sent.
   useEffect(() => {
-    if (isLive || runMode === "smoke") return;
-    const name = model.string.name;
-    const target = `${model.string.ipAddress}:${model.string.port}`;
-    let logged = false;
-    return model.onData.add((rgb) => {
-      if (logged) return;
-      logged = true;
-      logger.info(
-        `dry-run: not sending ${rgb.length} bytes to '${name}' (${target})`,
-      );
-    });
-  }, [model.onData]);
-
-  useEffect(() => {
-    if (!isLive) return;
     const abortController = new AbortController();
     let _connection: WLEDDDPConnection | null = null;
     const host = model.string.ipAddress;

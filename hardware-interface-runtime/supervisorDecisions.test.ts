@@ -24,6 +24,8 @@ const behind: RepoFacts = {
 };
 
 const noState = parseState(null);
+const proven = { lastGood: A, failed: {} };
+const ok = { headCrashLooping: false, stateWritable: true };
 
 describe("decideUpdate", () => {
   it("does nothing when HEAD is origin/main", () => {
@@ -35,13 +37,14 @@ describe("decideUpdate", () => {
         originIsAncestorOfHead: true,
         changedPaths: [],
       },
-      noState,
+      proven,
+      ok,
     );
     expect(action.kind).toBe("none");
   });
 
   it("gates a new commit that touches code", () => {
-    expect(decideUpdate(behind, noState)).toMatchObject({
+    expect(decideUpdate(behind, proven, ok)).toMatchObject({
       kind: "gate",
       sha: B,
     });
@@ -58,7 +61,8 @@ describe("decideUpdate", () => {
           "shared/notes.md",
         ],
       },
-      noState,
+      proven,
+      ok,
     );
     expect(action).toMatchObject({ kind: "fast-forward", sha: B });
   });
@@ -66,25 +70,26 @@ describe("decideUpdate", () => {
   it("gates when a docs change comes with anything else", () => {
     const action = decideUpdate(
       { ...behind, changedPaths: ["docs/plan.md", "package.json"] },
-      noState,
+      proven,
+      ok,
     );
     expect(action.kind).toBe("gate");
   });
 
   it("gates when the diff is empty but the commit is new", () => {
-    expect(decideUpdate({ ...behind, changedPaths: [] }, noState).kind).toBe(
+    expect(decideUpdate({ ...behind, changedPaths: [] }, proven, ok).kind).toBe(
       "gate",
     );
   });
 
   it("is blocked when the checkout is dirty", () => {
-    expect(decideUpdate({ ...behind, dirty: true }, noState).kind).toBe(
+    expect(decideUpdate({ ...behind, dirty: true }, proven, ok).kind).toBe(
       "blocked",
     );
   });
 
   it("is blocked when HEAD is detached", () => {
-    expect(decideUpdate({ ...behind, branch: null }, noState).kind).toBe(
+    expect(decideUpdate({ ...behind, branch: null }, proven, ok).kind).toBe(
       "blocked",
     );
   });
@@ -96,7 +101,8 @@ describe("decideUpdate", () => {
         headIsAncestorOfOrigin: false,
         originIsAncestorOfHead: false,
       },
-      noState,
+      proven,
+      ok,
     );
     expect(action.kind).toBe("blocked");
     expect(action.why).toContain("diverged");
@@ -109,32 +115,75 @@ describe("decideUpdate", () => {
         headIsAncestorOfOrigin: false,
         originIsAncestorOfHead: true,
       },
-      noState,
+      proven,
+      ok,
     );
     expect(action.kind).toBe("blocked");
     expect(action.why).toContain("ahead");
   });
 
   it("never retries a commit that failed", () => {
-    const state = markFailed(noState, B, "typecheck");
-    expect(decideUpdate(behind, state)).toMatchObject({ kind: "skip", sha: B });
+    const state = markFailed(proven, B, "typecheck");
+    expect(decideUpdate(behind, state, ok)).toMatchObject({
+      kind: "skip",
+      sha: B,
+    });
   });
 
   it("checks a newer commit after one failed", () => {
-    const state = markFailed(noState, B, "typecheck");
-    expect(decideUpdate({ ...behind, origin: C }, state)).toMatchObject({
+    const state = markFailed(proven, B, "typecheck");
+    expect(decideUpdate({ ...behind, origin: C }, state, ok)).toMatchObject({
       kind: "gate",
       sha: C,
     });
   });
 
   it("never fast-forwards a failed docs-only commit either", () => {
-    const state = markFailed(noState, B, "fast-forward failed");
+    const state = markFailed(proven, B, "fast-forward failed");
     const action = decideUpdate(
       { ...behind, changedPaths: ["docs/a.md"] },
       state,
+      ok,
     );
     expect(action.kind).toBe("skip");
+  });
+
+  it("waits for HEAD to prove itself before replacing it", () => {
+    const action = decideUpdate(behind, noState, ok);
+    expect(action.kind).toBe("blocked");
+    expect(action.why).toContain("hasn't run long enough");
+    expect(decideUpdate(behind, { lastGood: C, failed: {} }, ok).kind).toBe(
+      "blocked",
+    );
+  });
+
+  it("lets a fix through when HEAD is crash-looping and unproven", () => {
+    expect(
+      decideUpdate(behind, noState, { ...ok, headCrashLooping: true }),
+    ).toMatchObject({ kind: "gate", sha: B });
+  });
+
+  it("still fast-forwards docs while HEAD is unproven", () => {
+    expect(
+      decideUpdate({ ...behind, changedPaths: ["docs/a.md"] }, noState, ok)
+        .kind,
+    ).toBe("fast-forward");
+  });
+
+  it("doesn't update while the state file can't be written", () => {
+    const action = decideUpdate(behind, proven, {
+      ...ok,
+      stateWritable: false,
+    });
+    expect(action.kind).toBe("blocked");
+    expect(action.why).toContain("state file");
+  });
+
+  it("still skips a failure kept only in memory", () => {
+    const state = markFailed(proven, B, "typecheck");
+    expect(
+      decideUpdate(behind, state, { ...ok, stateWritable: false }).kind,
+    ).toBe("skip");
   });
 });
 

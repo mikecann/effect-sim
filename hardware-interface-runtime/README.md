@@ -19,8 +19,8 @@ bun run hwir
 # Specify project/playlist directly (skips prompts)
 bun run hwir -p <projectId> -l <playlistId>
 
-# Everything runs, but no UDP or WLED calls, no Convex mutations and no
-# Home Assistant: safe to run beside the live runtime
+# Everything runs, but shared/outsideWorld.ts blocks UDP, WLED and smart plug
+# calls, Convex mutations and Home Assistant: safe beside the live runtime
 bun run hwir -p <projectId> -l <playlistId> --dry-run
 
 # Boot, load the project, run ~2 s of frames with no side effects, exit 0
@@ -32,14 +32,16 @@ bun hardware-interface-runtime/index.tsx -p <projectId> -l <playlistId> --smoke
 
 `bun run hwir` runs `supervisor.ts`, which runs the runtime (`index.tsx`, with the same arguments) as a child and restarts it with backoff (1 s doubling to 30 s) whenever it exits. The supervisor only uses Node built-ins, so it keeps working when the rest of the repo is broken.
 
+Before each start it checks that `node_modules` matches `bun.lock` and `package.json` (a hash stamped in `node_modules/.hwir-lock-stamp` after an install works) and runs `bun install --frozen-lockfile` if not. A failed install is retried before the next start.
+
 With `HWIR_AUTO_UPDATE=true` (in `.env.local`) it also keeps the checkout on `origin/main`. Every minute it runs `git fetch origin main` and:
 
 - does nothing unless `origin/main` is strictly ahead of `HEAD` (fast-forward only). A dirty, detached, ahead or diverged checkout is logged once and left alone.
 - fast-forwards in place, without a restart, when the new commits only touch `ios/`, `docs/` or `*.md`.
-- otherwise checks the new commit in a staging worktree next to the checkout (`../effect-sim-staging`): `bun install --frozen-lockfile`, `bun run typecheck`, `supervisor.ts --self-test` and an `index.tsx --smoke` boot. If they all pass it fast-forwards, runs `bun install`, stops the runtime and exits, and launchd starts it again on the new code.
+- otherwise waits until `HEAD` is the last good commit, so there's always one to roll back to (unless `HEAD` is crash-looping, so a fix can still get through). Then it checks the new commit in a staging worktree (`/Volumes/TinkerSSD/effect-sim-staging` when that disk exists, else `../effect-sim-staging`): `bun install --frozen-lockfile`, `bun run typecheck`, and `bun run hwir <args> --smoke`, which goes through `package.json` and the new commit's own supervisor. If they all pass it fast-forwards, stops the runtime and exits, and launchd starts it again on the new code (installing its dependencies first).
 - never retries a commit that failed the check. A newer commit is checked fresh.
 
-Once the runtime has run for 5 minutes without exiting, its commit becomes the last good one. If the runtime then crashes 3 times within 10 minutes on a newer commit, the supervisor runs `git reset --hard <lastGood>`, marks the bad commit so it's never retried, runs `bun install` and exits for launchd to restart it.
+Once the runtime has run for 5 minutes without exiting, the commit it started on becomes the last good one. If the runtime then crashes 3 times within 10 minutes on a newer commit, the supervisor runs `git reset --hard <lastGood>`, marks the bad commit so it's never retried, and exits for launchd to restart it.
 
 What it remembers lives in `.hwir-supervisor.json` (git-ignored):
 
@@ -47,7 +49,9 @@ What it remembers lives in `.hwir-supervisor.json` (git-ignored):
 { "lastGood": "<sha>", "failed": { "<sha>": "typecheck" } }
 ```
 
-Delete a sha from `failed` to let it be tried again.
+Delete a sha from `failed` to let it be tried again. If the file can't be written, the supervisor keeps what it knows in memory, stays running rather than restarting, and applies no updates until the file is writable again.
+
+With `--smoke` the supervisor does its normal startup (state, git, dependencies), runs the runtime once with `--smoke`, and exits with its code. It never updates or writes state.
 
 Every decision is one `[SUPERVISOR]` line in launchd's log (`logs/hwir.log`). The minute-by-minute check only logs when its answer changes.
 

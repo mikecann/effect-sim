@@ -3,9 +3,11 @@ import type { Icon } from "./types";
 import { ProjectModel } from "./ProjectModel";
 import { NodeDocOfKind } from "../../convex/schema";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
+import { reachOut } from "../outsideWorld";
 
-export interface SwitchNodeModel
-  extends WithAutoSetters<NodeDocOfKind<"switch">> {}
+export interface SwitchNodeModel extends WithAutoSetters<
+  NodeDocOfKind<"switch">
+> {}
 
 export class SwitchNodeModel {
   constructor(
@@ -50,6 +52,15 @@ export class SwitchNodeModel {
     return `http://${ip}/switch/smart_plug_v2`;
   }
 
+  /** Null when the outside world is blocked (HWIR dry runs). */
+  private request(url: string, method: "GET" | "POST") {
+    return reachOut<Promise<Response | null>>(
+      `calling switch '${this.name}' ${method} ${url}`,
+      () => fetch(url, { method }),
+      Promise.resolve(null),
+    );
+  }
+
   async turnOn() {
     if (import.meta.env.VITE_IS_DEV_MODE) {
       this.setStatus(true);
@@ -58,7 +69,8 @@ export class SwitchNodeModel {
 
     const url = `${this.baseUrl}/turn_on`;
 
-    const response = await fetch(url, { method: "POST" });
+    const response = await this.request(url, "POST");
+    if (!response) return;
 
     if (!response.ok)
       throw new Error(
@@ -76,7 +88,8 @@ export class SwitchNodeModel {
 
     const url = `${this.baseUrl}/turn_off`;
 
-    const response = await fetch(url, { method: "POST" });
+    const response = await this.request(url, "POST");
+    if (!response) return;
 
     if (!response.ok)
       throw new Error(
@@ -96,7 +109,8 @@ export class SwitchNodeModel {
 
     const url = `${this.baseUrl}/toggle`;
 
-    const response = await fetch(url, { method: "POST" });
+    const response = await this.request(url, "POST");
+    if (!response) return;
 
     if (!response.ok)
       throw new Error(
@@ -115,7 +129,8 @@ export class SwitchNodeModel {
     // This might need adjustment if type2 has a different status endpoint
     const url = `${this.baseUrl}/`;
 
-    const response = await fetch(url, { method: "GET" });
+    const response = await this.request(url, "GET");
+    if (!response) return;
 
     if (!response.ok)
       throw new Error(

@@ -7,6 +7,8 @@ import { HWIRAppModel } from "./models/HWIRAppModel";
 import { ensure } from "../shared/ensure";
 import { logger } from "./utils/logger";
 import { runMode } from "./runMode";
+import { reachOut } from "../shared/outsideWorld";
+import { getFunctionName } from "convex/server";
 
 logger.info(`Hardware Interface Runtime Starting (${runMode})...`);
 
@@ -39,6 +41,23 @@ const convexUrl = ensure(
 
 const { projectId, playlistId } = await runSetupCLI(convexUrl);
 const convex = new ConvexReactClient(convexUrl);
+
+// Every write to Convex goes through the outside-world guard, so dry runs
+// read production data but never change it.
+const mutation = convex.mutation.bind(convex);
+convex.mutation = ((ref, ...rest) =>
+  reachOut(
+    `calling mutation ${getFunctionName(ref)}`,
+    () => mutation(ref, ...rest),
+    Promise.resolve(null),
+  )) as typeof convex.mutation;
+const action = convex.action.bind(convex);
+convex.action = ((ref, ...rest) =>
+  reachOut(
+    `calling action ${getFunctionName(ref)}`,
+    () => action(ref, ...rest),
+    Promise.resolve(null),
+  )) as typeof convex.action;
 const model = new HWIRAppModel({ projectId, playlistId });
 
 // Mount the component so hooks run in Bun

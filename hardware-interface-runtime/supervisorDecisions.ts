@@ -70,9 +70,18 @@ export const isDocsOnlyPath = (path: string) =>
 
 const short = (sha: string) => sha.slice(0, 7);
 
+/** What the supervisor knows beyond git. */
+export type RuntimeFacts = {
+  /** The runtime keeps crashing on HEAD (2+ crashes in the crash window). */
+  headCrashLooping: boolean;
+  /** The last write to the state file worked, so a rejection would stick. */
+  stateWritable: boolean;
+};
+
 export const decideUpdate = (
   repo: RepoFacts,
   state: SupervisorState,
+  runtime: RuntimeFacts,
 ): UpdateAction => {
   if (repo.head === repo.origin)
     return { kind: "none", why: `up to date at ${short(repo.head)}` };
@@ -107,6 +116,22 @@ export const decideUpdate = (
       kind: "fast-forward",
       sha: repo.origin,
       why: `${short(repo.origin)} only changes ios/, docs/ or markdown`,
+    };
+
+  // A failure must be remembered, or the same commit gets retried forever.
+  if (!runtime.stateWritable)
+    return {
+      kind: "blocked",
+      why: "the state file can't be written, not updating until it can",
+    };
+
+  // Only replace a commit that has proven itself, so there's always something
+  // to roll back to. A crash-looping HEAD is the exception: the fix has to
+  // arrive somehow.
+  if (repo.head !== state.lastGood && !runtime.headCrashLooping)
+    return {
+      kind: "blocked",
+      why: `${short(repo.head)} hasn't run long enough to count as good yet, waiting before updating to ${short(repo.origin)}`,
     };
 
   return {

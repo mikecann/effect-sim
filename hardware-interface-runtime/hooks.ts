@@ -6,10 +6,6 @@ import { ProjectModel } from "../shared/models/ProjectModel";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { logger } from "./utils/logger";
 import { plugConfigured, readPlug, switchPlug } from "./homeAssistant";
-import { isLive, runMode } from "./runMode";
-
-// Home Assistant is the real plug, so only a live run touches it.
-const plugEnabled = plugConfigured && isLive;
 
 export const useProjectModel = (model: HWIRAppModel) => {
   const projectDoc = useQuery(api.functions.getProject, {
@@ -63,7 +59,6 @@ export const useDisplayControl = (model: HWIRAppModel) => {
   // remote has something to change.
   useEffect(() => {
     if (control !== null || !playlistId) return;
-    if (!isLive) return;
     boot({
       projectId,
       settings: {
@@ -91,13 +86,9 @@ export const useDisplayControl = (model: HWIRAppModel) => {
     logger.info(
       `Remote: ${s.isOn ? "on" : "off"}, ${s.mode.kind} ${s.mode.id}, brightness ${s.brightness}`,
     );
-    if (!isLive) {
-      logger.info(`${runMode}: not switching the plug or confirming`);
-      return;
-    }
     void (async () => {
       try {
-        if (plugEnabled) {
+        if (plugConfigured) {
           lastPlugSwitchAt.current = Date.now();
           await switchPlug(s.isOn);
         }
@@ -129,7 +120,7 @@ const usePlugFollower = (
   }, [control]);
 
   useEffect(() => {
-    if (!plugEnabled || !model.startupSettings.playlistId) return;
+    if (!plugConfigured || !model.startupSettings.playlistId) return;
     const check = async () => {
       const c = latest.current;
       if (!c || c.status !== "live") return;
