@@ -21,6 +21,9 @@ export const machines: Machines<typeof schema> = defineMachines(
     internalQuery,
     deliver: internal.machines.deliver,
     component: components.stateMachines,
+    // Written only by the key migration (convex/migrations.ts) until the
+    // switchState machine takes it.
+    notMachines: ["switchStates.state"],
   },
 );
 

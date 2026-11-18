@@ -49,6 +49,9 @@ export const iconValidator = v.union(
 );
 
 export const commonNodeFields = {
+  // The editor's own id for the row (migrated rows: their old _id). Optional
+  // only until the key migration has run (convex/migrations.ts).
+  key: v.optional(v.string()),
   order: v.number(),
   parentId: v.union(v.id("nodes"), v.null()),
   projectId: v.id("projects"),
@@ -79,7 +82,8 @@ export const switchNodeFields = {
   name: v.string(),
   icon: iconValidator,
   ipAddress: v.string(),
-  isOn: v.union(v.boolean(), v.null()),
+  // Moving to switchStates (convex/migrations.ts).
+  isOn: v.optional(v.union(v.boolean(), v.null())),
   apiType: v.optional(
     v.union(v.literal("athom_type1"), v.literal("athom_type2")),
   ),
@@ -102,7 +106,8 @@ export const virtualStringNodeFields = {
 export const folderNodeFields = {
   kind: v.literal("folder"),
   label: v.string(),
-  children: v.array(v.id("nodes")),
+  // Never read: a folder's children are the nodes whose parentId is it.
+  children: v.optional(v.array(v.id("nodes"))),
 };
 
 // What the phone remote (ios/) asks the lights to do. HWIR applies it.
@@ -143,7 +148,34 @@ export const displayControlState = v.union(
   }),
 );
 
+// A switch node's power, as last heard from the plug (convex/switchState.ts).
+export const switchStateValidator = v.union(
+  v.object({ kind: v.literal("unknown") }),
+  v.object({
+    kind: v.literal("switching"),
+    target: v.boolean(),
+    // When it gives up waiting for the plug to answer.
+    timeoutAt: v.number(),
+  }),
+  v.object({ kind: v.literal("on"), changedAt: v.number() }),
+  v.object({ kind: v.literal("off"), changedAt: v.number() }),
+  v.object({
+    kind: v.literal("unreachable"),
+    error: v.string(),
+    changedAt: v.number(),
+  }),
+  v.object({ kind: v.literal("removed") }),
+);
+
 export default defineSchema({
+  // One row per switch node: whether its plug is on.
+  switchStates: defineTable({
+    projectId: v.id("projects"),
+    nodeKey: v.string(),
+    state: switchStateValidator,
+    stateTimers: machineTimers,
+  }).index("by_project_node", ["projectId", "nodeKey"]),
+
   // One row per project: the display's on/off, mode and brightness.
   displayControls: defineTable({
     projectId: v.id("projects"),
@@ -188,23 +220,30 @@ export default defineSchema({
       }),
     ),
   )
-    .index("by_kind", ["kind"])
-    .index("by_parent", ["parentId", "order"])
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project lists a project's rows in the order they were made, which the editor and the phone show; by_project_key finds one row by key.
     .index("by_project", ["projectId"])
-    .index("by_kind_project", ["kind", "projectId"]),
+    .index("by_project_key", ["projectId", "key"]),
 
   sequences: defineTable({
     name: v.string(),
     numFrames: v.number(),
     tracks: v.array(trackValidator),
     projectId: v.id("projects"),
-  }).index("by_project", ["projectId"]),
+    key: v.optional(v.string()),
+  })
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project keeps the order rows were made in, which the editor and the phone show; by_project_key finds one row by key.
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
 
   playlists: defineTable({
     name: v.string(),
     sequenceIds: v.array(v.id("sequences")),
     projectId: v.id("projects"),
-  }).index("by_project", ["projectId"]),
+    key: v.optional(v.string()),
+  })
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes -- by_project keeps the order rows were made in, which the editor and the phone show; by_project_key finds one row by key.
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"]),
 });
 
 export type NodeDoc = Doc<"nodes">;

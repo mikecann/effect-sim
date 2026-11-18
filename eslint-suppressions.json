@@ -13,9 +13,6 @@
     }
   },
   "convex/schema.ts": {
-    "@convex-dev/no-duplicate-indexes": {
-      "count": 1
-    },
     "machines/no-optional-on-machine-tables": {
       "count": 1
     }

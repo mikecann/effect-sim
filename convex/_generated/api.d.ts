@@ -13,6 +13,7 @@ import type * as displayControl from "../displayControl.js";
 import type * as functions from "../functions.js";
 import type * as machines from "../machines.js";
 import type * as machinesViewer from "../machinesViewer.js";
+import type * as migrations from "../migrations.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   functions: typeof functions;
   machines: typeof machines;
   machinesViewer: typeof machinesViewer;
+  migrations: typeof migrations;
 }>;
 
 /**
