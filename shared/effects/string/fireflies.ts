@@ -76,10 +76,10 @@ export const fireflies = defineEffect({
       randomFor,
     ]);
 
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       if (props.fadeRatio !== 1) string.multiplyAll(props.fadeRatio);
 
-      const adjustedRatio = (timing.effectPlaybackRatio * props.speed) % 1;
+      const adjustedRatio = (f.ratio * props.speed) % 1;
       const time = adjustedRatio * Math.PI * 2;
 
       for (let f = 0; f < firefliesDataRef.current.length; f++) {

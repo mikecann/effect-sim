@@ -13,10 +13,10 @@ export const sparkle = defineEffect({
   }),
   defaults: { color: [255, 255, 255], sparklesPerFrame: 1 },
   render: function Sparkle({ string, props }) {
-    useEffectFrame((_frame, random) => {
+    useEffectFrame((f) => {
       for (let i = 0; i < props.sparklesPerFrame; i++)
         string.setPixel(
-          random.int(0, string.ledCount - 1),
+          f.random.int(0, string.ledCount - 1),
           props.color[0],
           props.color[1],
           props.color[2],

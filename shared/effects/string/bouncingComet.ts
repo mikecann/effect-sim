@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 export const bouncingComet = defineEffect({
@@ -15,12 +15,11 @@ export const bouncingComet = defineEffect({
   }),
   defaults: { color: [255, 255, 255], size: 1, fadeRatio: 0.9, numBounces: 1 },
   render: function BouncingComet({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       if (props.fadeRatio !== 1) string.multiplyAll(props.fadeRatio);
 
       const totalSegments = Math.max(1, Math.floor(props.numBounces)) + 1;
-      const segmentProgress = timing.effectPlaybackRatio * totalSegments;
+      const segmentProgress = f.ratio * totalSegments;
       const currentSegment = Math.floor(segmentProgress);
       const segmentRatio = segmentProgress - currentSegment;
 

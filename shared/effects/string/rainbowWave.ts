@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
@@ -29,9 +29,8 @@ export const rainbowWave = defineEffect({
   }),
   defaults: { speed: 1, wavelength: 1 },
   render: function RainbowWave({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
-      const timeOffset = timing.effectPlaybackRatio * props.speed;
+    useEffectFrame((f) => {
+      const timeOffset = f.ratio * props.speed;
 
       for (let i = 0; i < string.ledCount; i++) {
         const positionRatio = i / string.ledCount;

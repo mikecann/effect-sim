@@ -98,8 +98,8 @@ export const fireworks = defineEffect({
       }
     }, [props.frequency, props.size, timing.loopCount, randomFor]);
 
-    useEffectFrame((_frame, random) => {
-      const currentTime = timing.effectPlaybackRatio * props.speed;
+    useEffectFrame((f) => {
+      const currentTime = f.ratio * props.speed;
 
       for (const fw of fireworksRef.current) {
         // Check if firework is active
@@ -148,7 +148,7 @@ export const fireworks = defineEffect({
 
           // Brightness fades over time
           // Also flickers slightly for sparkle effect
-          const flicker = 0.8 + random.next() * 0.2;
+          const flicker = 0.8 + f.random.next() * 0.2;
           const brightness =
             (1 - Math.pow(progress, p.decay)) * props.intensity * flicker;
 

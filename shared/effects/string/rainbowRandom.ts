@@ -12,15 +12,15 @@ export const rainbowRandom = defineEffect({
   }),
   defaults: { delayMs: 0 },
   render: function RainbowRandom({ string, props }) {
-    useEffectFrame((frame, random) => {
+    useEffectFrame((f) => {
       const framesPerUpdate = Math.max(1, Math.floor(props.delayMs / 16));
-      if (frame % framesPerUpdate !== 0) return;
+      if (f.frame % framesPerUpdate !== 0) return;
       for (let i = 0; i < string.ledCount; i++)
         string.setPixel(
           i,
-          Math.floor(random.next() * 256),
-          Math.floor(random.next() * 256),
-          Math.floor(random.next() * 256),
+          Math.floor(f.random.next() * 256),
+          Math.floor(f.random.next() * 256),
+          Math.floor(f.random.next() * 256),
         );
     });
     return null;

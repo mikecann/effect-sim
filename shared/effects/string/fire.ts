@@ -42,7 +42,7 @@ export const fire = defineEffect({
   render: function Fire({ string, props }) {
     const heatMapRef = useRef<number[]>([]);
 
-    useEffectFrame((_frame, random) => {
+    useEffectFrame((f) => {
       const ledCount = string.ledCount;
 
       // Initialize heat map if needed
@@ -53,7 +53,7 @@ export const fire = defineEffect({
 
       // Step 1: Cool down every cell slightly
       for (let i = 0; i < ledCount; i++) {
-        const cooldown = props.cooling * (1 + random.next() * 0.5);
+        const cooldown = props.cooling * (1 + f.random.next() * 0.5);
         heat[i] = Math.max(0, heat[i] - cooldown);
       }
 
@@ -62,18 +62,18 @@ export const fire = defineEffect({
       for (let i = ledCount - 1; i >= 2; i--)
         heat[i] =
           (heat[i - 1] + heat[i - 2] + heat[i - 2]) / 3 +
-          (random.next() - 0.5) * 0.05;
+          (f.random.next() - 0.5) * 0.05;
 
       // Step 3: Randomly ignite new sparks at the bottom
       const sparkChance = props.sparking;
       for (let i = 0; i < Math.ceil(ledCount * 0.1); i++)
-        if (random.next() < sparkChance) {
+        if (f.random.next() < sparkChance) {
           const sparkIndex = Math.floor(
-            random.next() * Math.min(7, ledCount * 0.15),
+            f.random.next() * Math.min(7, ledCount * 0.15),
           );
           heat[sparkIndex] = Math.min(
             1,
-            heat[sparkIndex] + 0.5 + random.next() * 0.5 * props.intensity,
+            heat[sparkIndex] + 0.5 + f.random.next() * 0.5 * props.intensity,
           );
         }
 

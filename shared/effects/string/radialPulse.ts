@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 import { distance } from "../../geometry/stringLayout";
 
@@ -33,8 +33,7 @@ export const radialPulse = defineEffect({
     width: 0.75,
   },
   render: function RadialPulse({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       const { min, max } = string.bounds;
       const center = {
         x: min.x + (max.x - min.x) * props.centerX,
@@ -48,8 +47,7 @@ export const radialPulse = defineEffect({
           Math.max(center.y - min.y, max.y - center.y),
           Math.max(center.z - min.z, max.z - center.z),
         ) + props.width;
-      const travelled =
-        ((timing.effectPlaybackRatio * props.rings) % 1) * farthest;
+      const travelled = ((f.ratio * props.rings) % 1) * farthest;
 
       for (let i = 0; i < string.ledCount; i++) {
         const fromRing = Math.abs(

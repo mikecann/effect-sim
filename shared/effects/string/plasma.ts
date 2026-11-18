@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 // Lerp between two colors
@@ -35,9 +35,8 @@ export const plasma = defineEffect({
     intensity: 1,
   },
   render: function Plasma({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
-      const time = timing.effectPlaybackRatio * props.speed * Math.PI * 2;
+    useEffectFrame((f) => {
+      const time = f.ratio * props.speed * Math.PI * 2;
       const ledCount = string.ledCount;
 
       for (let i = 0; i < ledCount; i++) {

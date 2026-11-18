@@ -12,7 +12,7 @@ export const setColor = defineEffect({
   }),
   defaults: { color: [255, 255, 255] },
   render: function SetColor({ string, props }) {
-    useEffectFrame(() => {
+    useEffectFrame((f) => {
       string.setAllPixels(props.color[0], props.color[1], props.color[2]);
     });
     return null;

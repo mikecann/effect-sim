@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineEffect } from "../defineEffect";
-import { useEffectFrame, useEffectTiming } from "../api";
+import { useEffectFrame } from "../api";
 import { inspectableProps } from "../inspectableProps";
 
 // Aurora color palette - greens, cyans, and purples
@@ -43,9 +43,8 @@ export const aurora = defineEffect({
   }),
   defaults: { speed: 0.5, intensity: 1, colorSpread: 2 },
   render: function Aurora({ string, props }) {
-    const timing = useEffectTiming();
-    useEffectFrame(() => {
-      const time = timing.effectPlaybackRatio * props.speed * Math.PI * 2;
+    useEffectFrame((f) => {
+      const time = f.ratio * props.speed * Math.PI * 2;
 
       for (let i = 0; i < string.ledCount; i++) {
         const position = i / string.ledCount;
