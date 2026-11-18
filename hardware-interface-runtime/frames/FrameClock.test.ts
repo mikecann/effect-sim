@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FpsMeter, FrameClock, MAX_CATCH_UP } from "./FrameClock";
+import { FpsMeter, FrameClock, MAX_CATCH_UP, safeFps } from "./FrameClock";
 
 describe("FrameClock", () => {
   it("runs one frame per interval, waiting until the next one is due", () => {
@@ -29,6 +29,16 @@ describe("FrameClock", () => {
     expect(clock.due(30)).toBe(1);
     expect(clock.due(55)).toBe(1);
     expect(clock.dropped).toBe(0);
+  });
+});
+
+describe("bad framerates", () => {
+  it("never gives a zero or unbounded interval", () => {
+    expect(new FrameClock(0).frameMs).toBe(1);
+    expect(new FrameClock(Infinity).frameMs).toBeCloseTo(1000 / 60);
+    expect(new FrameClock(NaN).frameMs).toBeCloseTo(1000 / 60);
+    for (const fps of [0, -5, NaN, Infinity]) expect(safeFps(fps)).toBe(60);
+    expect(safeFps(1000)).toBe(120);
   });
 });
 

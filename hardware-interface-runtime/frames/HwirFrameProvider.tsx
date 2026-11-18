@@ -4,7 +4,7 @@ import {
   FrameContext,
   type FrameContextValue,
 } from "../../src/common/FixedFrameProvider";
-import { FrameClock, type FpsMeter } from "./FrameClock";
+import { FrameClock, safeFps, type FpsMeter } from "./FrameClock";
 
 /**
  * HWIR's stand-in for the editor's FrameProvider: same context, so effects
@@ -20,7 +20,7 @@ export const HwirFrameProvider = ({
   meter: FpsMeter;
   children: ReactNode;
 }) => {
-  const clampedFps = fps > 0 ? fps : 60;
+  const clampedFps = safeFps(fps);
   const frameMs = 1000 / clampedFps;
   const signal = useMemo(() => new Signal(), []);
 

@@ -5,15 +5,26 @@
 
 export const MAX_CATCH_UP = 2;
 
+/** A bad framerate (0, negative, NaN, Infinity) can never make frames run unbounded. */
+export const safeFps = (fps: number) =>
+  Number.isFinite(fps) && fps > 0 ? Math.min(Math.max(fps, 1), 120) : 60;
+
 export class FrameClock {
   private nextAt: number | null = null;
   /** Frames skipped after stalls, since the clock started. */
   dropped = 0;
 
+  readonly frameMs: number;
+
   constructor(
-    readonly frameMs: number,
+    frameMs: number,
     private readonly maxCatchUp = MAX_CATCH_UP,
-  ) {}
+  ) {
+    // Never 0, NaN or Infinity, whatever the project says (1 to 1000 ms).
+    this.frameMs = Number.isFinite(frameMs)
+      ? Math.min(Math.max(frameMs, 1), 1000)
+      : 1000 / 60;
+  }
 
   /** How many frames to run now (0 to maxCatchUp). */
   due(now: number): number {
