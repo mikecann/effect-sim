@@ -25,8 +25,8 @@ export const displayControl = defineMachine(
     table: "displayControls",
     description:
       "What the Christmas lights display should be doing (on or off, which mode, how bright), and whether the lights runtime has confirmed it's doing it.",
-    // The token check lives in convex/display.ts, before any send, so both
-    // roles always pass here.
+    // There's no auth yet (see convex/display.ts), so both roles always
+    // pass here.
     callers: {
       remote: "Only the phone remote can change the display.",
       player: "Only the lights runtime can confirm a change.",

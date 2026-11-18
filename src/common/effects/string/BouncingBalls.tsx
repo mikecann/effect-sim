@@ -36,7 +36,10 @@ export function BouncingBalls({
 
   // Initialize balls when loop resets or ball count changes
   useEffect(() => {
-    if (lastLoopCountRef.current !== model.loopCount || ballsRef.current.length !== props.numBalls) {
+    if (
+      lastLoopCountRef.current !== model.loopCount ||
+      ballsRef.current.length !== props.numBalls
+    ) {
       lastLoopCountRef.current = model.loopCount;
       lastTimeRef.current = 0;
 
@@ -73,21 +76,24 @@ export function BouncingBalls({
     // Scale delta time
     const dt = deltaTime * 3 * props.speed;
 
-    // Update each ball
-    for (const ball of ballsRef.current) {
-      // Update position
-      ball.position += ball.velocity * dt;
-
-      // Bounce off ends
-      if (ball.position < 0) {
-        ball.position = -ball.position;
-        ball.velocity = Math.abs(ball.velocity);
-      }
-      if (ball.position > 1) {
-        ball.position = 2 - ball.position;
-        ball.velocity = -Math.abs(ball.velocity);
-      }
-    }
+    // Step each ball, bouncing off the ends. New objects rather than
+    // mutating the old ones, which the React compiler treats as frozen.
+    ballsRef.current = ballsRef.current.map((ball) => {
+      const position = ball.position + ball.velocity * dt;
+      if (position < 0)
+        return {
+          ...ball,
+          position: -position,
+          velocity: Math.abs(ball.velocity),
+        };
+      if (position > 1)
+        return {
+          ...ball,
+          position: 2 - position,
+          velocity: -Math.abs(ball.velocity),
+        };
+      return { ...ball, position };
+    });
 
     // Render balls
     for (const ball of ballsRef.current) {
@@ -117,4 +123,3 @@ export function BouncingBalls({
 
   return null;
 }
-
