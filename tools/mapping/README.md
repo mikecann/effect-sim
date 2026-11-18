@@ -103,7 +103,7 @@ The session ends in `solving` with `views` on its row. The editor's review UI re
 
 `u` runs across from the left edge and `v` down from the top, both 0..1, with pixel centres at `(x + 0.5) / width`. `confidence` is 0..1: measured points are at least 0.3 (0.9 for ones `verify --fill` lit one at a time); below 0.25 means interpolated between neighbours, not seen. `null` means not seen from this view.
 
-The editor lines its 3D camera up with each view's photo, raycasts the points onto the house, merges views per LED by confidence, and sends `SOLVED { proposed }` (→ review), then `APPLY` writes `ledPositions`. `RECAPTURE` from solving or review goes back to capturing and puts the display back into mapping mode; the views stay until replaced. A daily cron (`convex/crons.ts`) deletes the photos of discarded sessions and any upload no view has held for a day; `upload` checks the session takes views before uploading, and deletes its photos again if attaching them fails.
+The editor lines its 3D camera up with each view's photo, raycasts the points onto the house, merges views per LED by confidence, and sends `SOLVED { proposed }` (→ review), then `APPLY` writes `ledPositions`. `RECAPTURE` from solving or review goes back to capturing and puts the display back into mapping mode; the views stay until replaced. A daily cron (`convex/crons.ts`) deletes the photos of discarded sessions (and the sessions themselves after 30 days) and any upload no view has held for a day, using the `mappingPhotos` table `addView` keeps of which session holds which photo; `upload` checks the session takes views before uploading, and deletes its photos again if attaching them fails.
 
 ## Checking the tool itself
 

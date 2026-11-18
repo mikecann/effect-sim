@@ -401,7 +401,19 @@ export default defineSchema({
     // 3D. Kept through RECAPTURE until a new upload replaces a view.
     // eslint-disable-next-line machines/no-optional-on-machine-tables -- capture data the tool adds beside the state, like hwirPresences' heartbeat fields
     views: v.optional(v.array(mappingViewValidator)),
-  }).index("by_project_state", ["projectId", "state.kind"]),
+  })
+    .index("by_project_state", ["projectId", "state.kind"])
+    .index("by_state_started", ["state.kind", "startedAt"]),
+
+  // Every photo a mapping session's view holds, so the daily clean-up
+  // (mapping.cleanUpPhotos) can tell a held photo from a stray upload by
+  // index, however many sessions there are. addView keeps it in step.
+  mappingPhotos: defineTable({
+    storageId: v.id("_storage"),
+    sessionId: v.id("mappingSessions"),
+  })
+    .index("by_storage", ["storageId"])
+    .index("by_session", ["sessionId"]),
 
   projects: defineTable(projectFields),
 

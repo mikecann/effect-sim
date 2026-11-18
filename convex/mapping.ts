@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { query } from "./_generated/server";
+import { query, type MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { DatabaseReader } from "./_generated/server";
 import { editorMutation, hwirMutation } from "./auth";
@@ -194,21 +195,42 @@ export const addView = editorMutation({
     if (replaced)
       for (const id of [replaced.photo, replaced.darkPhoto])
         if (id && id !== view.photo && id !== view.darkPhoto)
-          await ctx.storage.delete(id);
+          await deletePhoto(ctx, id);
+    for (const id of [view.photo, view.darkPhoto])
+      if (id && !(await isHeld(ctx, id)))
+        await ctx.db.insert("mappingPhotos", { storageId: id, sessionId });
     await ctx.db.patch("mappingSessions", sessionId, {
       views: [...views.filter((existing) => existing !== replaced), view],
     });
   },
 });
 
-/** Every photo some session's view still holds, across all projects. */
-const photosInUse = async (ctx: { db: DatabaseReader }) => {
-  const used = new Set<string>();
-  // A house has a handful of sessions; this is plenty.
-  for (const row of await ctx.db.query("mappingSessions").take(1000))
-    for (const view of row.views ?? [])
-      for (const id of [view.photo, view.darkPhoto]) if (id) used.add(id);
-  return used;
+/** Whether some session's view holds this photo (mappingPhotos). */
+const isHeld = async (ctx: { db: DatabaseReader }, id: Id<"_storage">) =>
+  (await ctx.db
+    .query("mappingPhotos")
+    .withIndex("by_storage", (q) => q.eq("storageId", id))
+    .first()) !== null;
+
+/** Deletes a photo and the rows that say a view holds it. */
+const deletePhoto = async (
+  ctx: {
+    db: Pick<DatabaseReader, "query" | "system"> & {
+      delete: (
+        table: "mappingPhotos",
+        id: Id<"mappingPhotos">,
+      ) => Promise<void>;
+    };
+    storage: Pick<MutationCtx["storage"], "delete">;
+  },
+  id: Id<"_storage">,
+) => {
+  for (const held of await ctx.db
+    .query("mappingPhotos")
+    .withIndex("by_storage", (q) => q.eq("storageId", id))
+    .take(100))
+    await ctx.db.delete("mappingPhotos", held._id);
+  if (await ctx.db.system.get("_storage", id)) await ctx.storage.delete(id);
 };
 
 /**
@@ -219,10 +241,12 @@ export const deleteUnattached = editorMutation({
   args: { storageIds: v.array(v.id("_storage")) },
   returns: v.number(),
   handler: async (ctx, { storageIds }) => {
-    const used = await photosInUse(ctx);
     let deleted = 0;
     for (const id of storageIds)
-      if (!used.has(id) && (await ctx.db.system.get("_storage", id))) {
+      if (
+        !(await isHeld(ctx, id)) &&
+        (await ctx.db.system.get("_storage", id))
+      ) {
         await ctx.storage.delete(id);
         deleted++;
       }
@@ -232,37 +256,83 @@ export const deleteUnattached = editorMutation({
 
 /** Uploaded photos younger than this may still be on their way into a view. */
 export const UNATTACHED_PHOTO_GRACE_MS = 24 * 60 * 60_000;
+/** Discarded sessions older than this are deleted outright. */
+export const DISCARDED_SESSION_KEEP_MS = 30 * 24 * 60 * 60_000;
 
 /**
- * Daily (convex/crons.ts): a discarded session's views are no use, so their
- * photos go; and so does any upload no view holds after a day (a tool that
- * crashed between uploading and attaching). Mapping is the only thing that
- * uses file storage.
+ * Daily (convex/crons.ts), a page at a time, scheduling itself for the next:
+ * 1. every discarded session's photos go (its views are no use), and a
+ *    discarded session over 30 days old goes altogether;
+ * 2. every upload no view holds after a day goes (a tool that crashed between
+ *    uploading and attaching). Mapping is the only thing that uses file
+ *    storage.
  */
 export const cleanUpPhotos = machines.internalMutation({
-  args: {},
-  returns: v.object({ views: v.number(), photos: v.number() }),
-  handler: async (ctx) => {
-    let views = 0;
-    const discarded = await ctx.db
-      .query("mappingSessions")
-      .take(1000)
-      .then((rows) =>
-        rows.filter((r) => r.state.kind === "discarded" && r.views?.length),
-      );
-    for (const row of discarded) {
-      views += row.views?.length ?? 0;
-      await ctx.db.patch("mappingSessions", row._id, { views: undefined });
-    }
-    const used = await photosInUse(ctx);
-    const cutoff = Date.now() - UNATTACHED_PHOTO_GRACE_MS;
-    let photos = 0;
-    for (const file of await ctx.db.system.query("_storage").take(5000))
-      if (!used.has(file._id) && file._creationTime < cutoff) {
-        await ctx.storage.delete(file._id);
-        photos++;
+  args: {
+    phase: v.optional(v.union(v.literal("discarded"), v.literal("strays"))),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    pageSize: v.optional(v.number()),
+  },
+  returns: v.object({
+    views: v.number(),
+    photos: v.number(),
+    sessions: v.number(),
+  }),
+  handler: async (
+    ctx,
+    { phase = "discarded", cursor = null, pageSize = 100 },
+  ) => {
+    const done = { views: 0, photos: 0, sessions: 0 };
+    const next = (args: {
+      phase: "discarded" | "strays";
+      cursor: string | null;
+    }) =>
+      ctx.scheduler.runAfter(0, internal.mapping.cleanUpPhotos, {
+        ...args,
+        pageSize,
+      });
+
+    if (phase === "discarded") {
+      const page = await ctx.db
+        .query("mappingSessions")
+        .withIndex("by_state_started", (q) => q.eq("state.kind", "discarded"))
+        .paginate({ cursor, numItems: pageSize });
+      const oldBefore = Date.now() - DISCARDED_SESSION_KEEP_MS;
+      for (const row of page.page) {
+        for (const held of await ctx.db
+          .query("mappingPhotos")
+          .withIndex("by_session", (q) => q.eq("sessionId", row._id))
+          .take(1000)) {
+          await deletePhoto(ctx, held.storageId);
+          done.photos++;
+        }
+        if (row.startedAt < oldBefore) {
+          await mappingSession.purge(ctx, row._id);
+          done.sessions++;
+        } else if (row.views?.length) {
+          done.views += row.views.length;
+          await ctx.db.patch("mappingSessions", row._id, { views: undefined });
+        }
       }
-    return { views, photos };
+      await next(
+        page.isDone
+          ? { phase: "strays", cursor: null }
+          : { phase, cursor: page.continueCursor },
+      );
+      return done;
+    }
+
+    const page = await ctx.db.system
+      .query("_storage")
+      .paginate({ cursor, numItems: pageSize });
+    const cutoff = Date.now() - UNATTACHED_PHOTO_GRACE_MS;
+    for (const file of page.page)
+      if (file._creationTime < cutoff && !(await isHeld(ctx, file._id))) {
+        await ctx.storage.delete(file._id);
+        done.photos++;
+      }
+    if (!page.isDone) await next({ phase, cursor: page.continueCursor });
+    return done;
   },
 });
 
