@@ -29,5 +29,5 @@
     },
     "types": ["node", "ws"]
   },
-  "include": ["src", "shared", "hardware-interface-runtime", "convex"]
+  "include": ["src", "shared", "hardware-interface-runtime", "convex", "tools"]
 }
