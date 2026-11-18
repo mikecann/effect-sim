@@ -8,6 +8,7 @@ crons.daily(
   "clean up mapping photos",
   { hourUTC: 4, minuteUTC: 17 },
   internal.mapping.cleanUpPhotos,
+  {},
 );
 
 export default crons;

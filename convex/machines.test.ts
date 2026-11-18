@@ -388,57 +388,97 @@ describe("mappingSession", () => {
     });
   });
 
-  test("photos no view holds are deleted: on request, and daily once a day old or once their session is discarded", async () => {
-    const { t, sessionId, send } = await setupMapping();
+  test("photos no view holds are deleted: on request, and daily however many sessions there are", async () => {
+    const { t, projectId, sessionId: first, send } = await setupMapping();
     const store = () =>
       t.run(async (ctx) => await ctx.storage.store(new Blob(["jpeg"])));
-    const stored = () =>
-      t.run(async (ctx) =>
-        (await ctx.db.system.query("_storage").collect()).map((f) => f._id),
+    const stored = async () =>
+      new Set(
+        await t.run(async (ctx) =>
+          (await ctx.db.system.query("_storage").collect()).map((f) => f._id),
+        ),
       );
-    const held = await store();
-    const stray = await store();
-    await t.mutation(api.mapping.addView, {
-      ...send.editor,
-      view: {
-        name: "front",
-        uploadedAt: 1,
-        photo: held,
-        imageWidth: 10,
-        imageHeight: 10,
-        strings: [],
-      },
+    const addView = async (sessionId: Id<"mappingSessions">) => {
+      const photo = await store();
+      await t.mutation(api.mapping.addView, {
+        token: tokens.editor,
+        sessionId,
+        view: {
+          name: "front",
+          uploadedAt: 1,
+          photo,
+          imageWidth: 10,
+          imageHeight: 10,
+          strings: [],
+        },
+      });
+      return photo;
+    };
+    const startSession = async () => {
+      const started = await t.mutation(api.mapping.start, {
+        token: tokens.editor,
+        projectId,
+      });
+      if (started.status !== "done") throw new Error("didn't start");
+      return started.id as Id<"mappingSessions">;
+    };
+    const cleanUp = async () => {
+      await t.mutation(internal.mapping.cleanUpPhotos, { pageSize: 2 });
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    };
+
+    // Five discarded sessions with photos: more than one page of them.
+    const discardedPhotos = [await addView(first)];
+    await t.mutation(api.mapping.discard, send.editor);
+    for (let i = 0; i < 4; i++) {
+      const id = await startSession();
+      discardedPhotos.push(await addView(id));
+      await t.mutation(api.mapping.discard, {
+        token: tokens.editor,
+        sessionId: id,
+      });
+    }
+    // The newest session is in review, holding its photo.
+    const reviewed = await startSession();
+    const held = await addView(reviewed);
+    await t.mutation(api.mapping.captured, {
+      token: tokens.editor,
+      sessionId: reviewed,
     });
+    await t.mutation(api.mapping.solved, {
+      token: tokens.editor,
+      sessionId: reviewed,
+      proposed: [],
+    });
+
+    // On request: only what no view holds.
+    const stray = await store();
     expect(
       await t.mutation(api.mapping.deleteUnattached, {
         token: tokens.editor,
         storageIds: [held, stray],
       }),
     ).toBe(1);
-    expect(await stored()).toEqual([held]);
 
-    // A fresh stray upload survives the daily run; a day-old one doesn't.
+    // Daily: the discarded sessions' photos go, the held one stays, and a
+    // stray upload goes only once it's a day old.
     const fresh = await store();
-    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
-      views: 0,
-      photos: 0,
-    });
+    await cleanUp();
+    expect(await stored()).toEqual(new Set([held, fresh]));
+    expect(await t.query(api.mapping.views, { sessionId: first })).toEqual([]);
     vi.setSystemTime(Date.now() + 25 * 60 * 60_000);
-    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
-      views: 0,
-      photos: 1,
-    });
-    expect(await stored()).toEqual([held]);
-    void fresh;
+    await cleanUp();
+    expect(await stored()).toEqual(new Set([held]));
 
-    // Discarded: its views and their photos go.
-    await t.mutation(api.mapping.discard, send.editor);
-    expect(await t.mutation(internal.mapping.cleanUpPhotos, {})).toEqual({
-      views: 1,
-      photos: 1,
-    });
-    expect(await stored()).toEqual([]);
-    expect(await t.query(api.mapping.views, { sessionId })).toEqual([]);
+    // A month on, the discarded sessions' rows go too; the reviewed one stays.
+    vi.setSystemTime(Date.now() + 31 * 24 * 60 * 60_000);
+    await cleanUp();
+    expect(await t.query(api.mapping.get, { sessionId: first })).toBeNull();
+    expect(
+      (await t.query(api.mapping.get, { sessionId: reviewed }))?.state.kind,
+    ).toBe("review");
+    expect(await stored()).toEqual(new Set([held]));
+    expect(discardedPhotos).toHaveLength(5);
   });
 
   test("views are added while capturing, replaced by name, and refused once in review", async () => {
