@@ -1,3 +1,4 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import { AppModel } from "../../common/models/AppModel";
 import {
@@ -17,7 +18,6 @@ import {
   type Projection,
 } from "../../common/TreeDataProvider/treeUtilities";
 import type { UniqueIdentifier } from "@dnd-kit/core";
-import { Id } from "../../../convex/_generated/dataModel";
 
 const INDENTATION_WIDTH = 20;
 
@@ -70,7 +70,7 @@ export class NodesTreeUIModel {
     const project = this.app.project;
     if (!project) return new Map();
     const map = new Map<string, NodeDoc>();
-    for (const node of project.nodes) map.set(node._id, node.doc);
+    for (const node of project.nodes) map.set(node.key, node.doc);
     return map;
   }
 
@@ -84,24 +84,24 @@ export class NodesTreeUIModel {
     const nodesById = this.nodesById;
 
     for (const node of tree) {
-      const nodeData = nodesById.get(node._id);
+      const nodeData = nodesById.get(node.key);
       if (!nodeData) continue;
 
       const hasChildren = isFolder(node) && node.children.length > 0;
 
       const item: FlattenedItem = {
-        id: node._id,
+        id: node.key,
         data: nodeData,
         depth,
         parentId,
-        collapsed: isFolder(node) && !expandedItems.has(node._id),
+        collapsed: isFolder(node) && !expandedItems.has(node.key),
         hasChildren,
       };
 
       result.push(item);
 
-      if (isFolder(node) && expandedItems.has(node._id)) {
-        const children = this.flattenTree(node.children, depth + 1, node._id);
+      if (isFolder(node) && expandedItems.has(node.key)) {
+        const children = this.flattenTree(node.children, depth + 1, node.key);
         result.push(...children);
       }
     }
@@ -178,8 +178,8 @@ export class NodesTreeUIModel {
       targetParentId,
     );
 
-    const nodeId = String(activeId) as Id<"nodes">;
-    const finalTargetParentId = (targetParentId ?? null) as Id<"nodes"> | null;
+    const nodeId = String(activeId) as NodeKey;
+    const finalTargetParentId = (targetParentId ?? null) as NodeKey | null;
 
     const sourcePath = findNodePath({ tree: nodeTree, nodeId });
     if (sourcePath === null) return null;

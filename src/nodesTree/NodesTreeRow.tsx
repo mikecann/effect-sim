@@ -48,7 +48,7 @@ export const NodesTreeRow = ({
   });
 
   const nodeData = item.data;
-  const nodeId = nodeData._id as NodeDoc["_id"];
+  const nodeId = nodeData.key;
   const selectedNodeIds = appModel.selectedNodeIds;
   const isSelected = selectedNodeIds.includes(nodeId);
   const isOnlySelected =

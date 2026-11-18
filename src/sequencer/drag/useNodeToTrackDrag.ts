@@ -1,15 +1,15 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { useState, useCallback, useEffect } from "react";
 import type {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
 } from "@dnd-kit/core";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { NodeDoc } from "../../../shared/nodeTree";
 
 export type NodeDragData = {
   type: "node";
-  nodeIds: Id<"nodes">[];
+  nodeIds: NodeKey[];
   nodeKinds: Set<NodeDoc["kind"]>;
 };
 

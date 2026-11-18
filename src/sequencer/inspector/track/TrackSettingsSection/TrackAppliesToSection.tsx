@@ -19,8 +19,8 @@ export function TrackAppliesToSection({
   const stringNodes = project.getNodesByKind("string") as StringNodeModel[];
 
   const nodeOptions = stringNodes.map((node) => ({
-    value: node._id,
-    label: node.name || `String ${node._id.slice(-4)}`,
+    value: node.key,
+    label: node.name || `String ${node.key.slice(-4)}`,
   }));
 
   return (

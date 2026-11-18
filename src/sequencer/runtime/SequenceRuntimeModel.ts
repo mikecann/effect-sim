@@ -1,5 +1,5 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { SwitchNodeModel } from "../../../shared/models/SwitchNodeModel";
 import type { StringNodeModel } from "../../../shared/models/StringNodeModel";
 import type { VirtualStringNodeModel } from "../../../shared/models/VirtualStringNodeModel";
@@ -90,10 +90,10 @@ export class SequenceRuntimeModel {
     );
   }
 
-  get allStringNodeIds(): Id<"nodes">[] {
+  get allStringNodeIds(): NodeKey[] {
     return [
-      ...this.allStringNodes.map((n) => n._id),
-      ...this.allVirtualStringNodes.map((n) => n._id),
+      ...this.allStringNodes.map((n) => n.key),
+      ...this.allVirtualStringNodes.map((n) => n.key),
     ];
   }
 
@@ -101,13 +101,13 @@ export class SequenceRuntimeModel {
     return (this.project?.getNodesByKind("switch") as SwitchNodeModel[]) ?? [];
   }
 
-  get allSwitchNodeIds(): Id<"nodes">[] {
-    return this.allSwitchNodes.map((n) => n._id);
+  get allSwitchNodeIds(): NodeKey[] {
+    return this.allSwitchNodes.map((n) => n.key);
   }
 
-  get switchNodesMap(): Map<Id<"nodes">, SwitchNodeModel> {
-    const map = new Map<Id<"nodes">, SwitchNodeModel>();
-    for (const node of this.allSwitchNodes) map.set(node._id, node);
+  get switchNodesMap(): Map<NodeKey, SwitchNodeModel> {
+    const map = new Map<NodeKey, SwitchNodeModel>();
+    for (const node of this.allSwitchNodes) map.set(node.key, node);
     return map;
   }
 

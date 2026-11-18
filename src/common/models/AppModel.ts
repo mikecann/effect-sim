@@ -1,6 +1,7 @@
 import { makeAutoObservable, observableRef } from "mobx";
 import type * as THREE from "three";
-import { Doc, Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import type { NodeKey } from "../../../shared/models/docs";
 import { ProjectModel } from "../../../shared/models/ProjectModel";
 import { exhaustiveCheck } from "../../../shared/misc";
 import { AllNodeModels } from "../../../shared/models/types";
@@ -14,6 +15,8 @@ import type { PlaylistModel } from "../../../shared/models/PlaylistModel";
 import { HardwareInterfaceRuntimeModel } from "./HardwareInterfaceRuntimeModel";
 import { FlexLayoutModel } from "./FlexLayoutModel";
 import { makePersistable } from "mobx-persist-store";
+import { EditorTokenModel } from "../auth/EditorTokenModel";
+import type { ProjectSyncModel } from "./sync/ProjectSyncModel";
 
 export type SelectedEntity =
   | { kind: "node"; node: AllNodeModels }
@@ -31,18 +34,22 @@ export type SelectedEntity =
 export class AppModel {
   currentProjectId: Id<"projects"> | null = null;
   isMeasureMode = false;
-  placingStringId: Id<"nodes"> | null = null;
+  placingStringId: NodeKey | null = null;
   selectedEntity: SelectedEntity = null;
   gardenModel: THREE.Object3D | null = null;
   projects: ProjectModel[] = [];
   hardwareInterfaceRuntime: HardwareInterfaceRuntimeModel;
   layout: FlexLayoutModel;
+  editorToken = new EditorTokenModel();
+  /** Saves the open project (src/common/models/sync/ProjectSyncer.tsx). */
+  sync: ProjectSyncModel | null = null;
 
   constructor() {
     this.hardwareInterfaceRuntime = new HardwareInterfaceRuntimeModel(this);
     this.layout = new FlexLayoutModel(this);
     makeAutoObservable(this, {
       gardenModel: observableRef,
+      sync: observableRef,
     });
     makePersistable(this, {
       name: "AppModel",
@@ -62,21 +69,32 @@ export class AppModel {
     return project;
   }
 
-  updateFromServerData({ projects }: { projects: Doc<"projects">[] }) {
-    this.projects = projects.map((project) => new ProjectModel(project));
+  /** Follows the server's list of projects, keeping each model that's still there. */
+  setProjectsFromServer(docs: Doc<"projects">[]) {
+    this.projects = docs.map((doc) => {
+      const existing = this.projects.find((p) => p._id === doc._id);
+      if (!existing) return new ProjectModel(doc);
+      // The open project's name and settings are merged by its sync.
+      if (existing !== this.project) existing.doc = doc;
+      return existing;
+    });
   }
 
-  get selectedNodeIds(): Array<Id<"nodes">> {
+  setSync(sync: ProjectSyncModel | null) {
+    this.sync = sync;
+  }
+
+  get selectedNodeIds(): Array<NodeKey> {
     if (!this.selectedEntity) return [];
 
     if (this.selectedEntity.kind === "node")
-      return [this.selectedEntity.node._id];
+      return [this.selectedEntity.node.key];
 
     if (this.selectedEntity.kind === "nodes")
-      return this.selectedEntity.nodes.map((n) => n._id);
+      return this.selectedEntity.nodes.map((n) => n.key);
 
     if (this.selectedEntity.kind === "virtual_string")
-      return [this.selectedEntity.node._id];
+      return [this.selectedEntity.node.key];
 
     if (this.selectedEntity.kind === "event") return [];
 
@@ -115,7 +133,7 @@ export class AppModel {
   ): number | null {
     if (
       this.selectedEntity?.kind === "virtual_string" &&
-      this.selectedEntity.node._id === virtualStringNode._id
+      this.selectedEntity.node.key === virtualStringNode.key
     )
       return this.selectedEntity.selectedSegmentIndex;
     return null;
@@ -129,16 +147,12 @@ export class AppModel {
     this.isMeasureMode = value;
   }
 
-  setPlacingStringId(id: Id<"nodes"> | null) {
+  setPlacingStringId(id: NodeKey | null) {
     this.placingStringId = id;
   }
 
   setSelectedEntity(entity: SelectedEntity) {
     this.selectedEntity = entity;
-  }
-
-  addProject(project: ProjectModel) {
-    this.projects.push(project);
   }
 
   removeProject(project: ProjectModel) {
@@ -147,7 +161,7 @@ export class AppModel {
     if (this.currentProjectId === project._id) this.currentProjectId = null;
   }
 
-  startPlacingString(stringId: Id<"nodes">) {
+  startPlacingString(stringId: NodeKey) {
     this.setPlacingStringId(stringId);
     if (this.isMeasureMode) this.setIsMeasureMode(false);
   }

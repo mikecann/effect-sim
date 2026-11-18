@@ -11,8 +11,8 @@ export class VirtualStringLedDataModel {
     makeAutoObservable(this);
   }
 
-  get _id() {
-    return this.virtualString._id;
+  get key() {
+    return this.virtualString.key;
   }
 
   get ledCount() {
@@ -24,7 +24,7 @@ export class VirtualStringLedDataModel {
 
     for (const segment of this.virtualString.segments) {
       const stringLedData = this.ledData.strings.find(
-        (s) => s.string._id === segment.nodeId,
+        (s) => s.string.key === segment.nodeId,
       );
       if (!stringLedData) continue;
 

@@ -19,7 +19,7 @@ export const StringSegmentRangeInstantIndicator = observer(() => {
 
   const stringNode =
     segment && appModel.project
-      ? appModel.project.nodes.find((n) => n._id === segment.nodeId)
+      ? appModel.project.nodes.find((n) => n.key === segment.nodeId)
       : null;
 
   const ipAddress =
@@ -37,7 +37,7 @@ export const StringSegmentRangeInstantIndicator = observer(() => {
   // Update state ref whenever these change so the socket callbacks can access the latest values
   useEffect(() => {
     stateRef.current = { ledCount, start, end };
-  }, [ledCount, start, end]);
+  }, [ipAddress, ledCount, start, end]);
 
   // Manage WebSocket connection
   useEffect(() => {
@@ -100,16 +100,6 @@ export const StringSegmentRangeInstantIndicator = observer(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (ledCount === undefined || start === undefined || end === undefined)
       return;
-    console.log("ws update...", ws?.readyState);
-
-    console.log(
-      "Setting segment indicator color",
-      ipAddress,
-      ledCount,
-      start,
-      end,
-    );
-
     ws.send(
       JSON.stringify({
         seg: {

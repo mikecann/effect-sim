@@ -1,14 +1,14 @@
 import { makeAutoObservable } from "mobx";
-import { Doc, Id } from "../../convex/_generated/dataModel";
+import type { PlaylistDoc, SequenceKey } from "./docs";
 import { SequenceModel } from "./sequencer/SequenceModel";
 import { ProjectModel } from "./ProjectModel";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
 
-export interface PlaylistModel extends WithAutoSetters<Doc<"playlists">> {}
+export interface PlaylistModel extends WithAutoSetters<PlaylistDoc> {}
 
 export class PlaylistModel {
   constructor(
-    public doc: Doc<"playlists">,
+    public doc: PlaylistDoc,
     public readonly project?: ProjectModel,
   ) {
     makeAutoObservable(this);
@@ -17,7 +17,7 @@ export class PlaylistModel {
 
   get sequences(): SequenceModel[] {
     return this.sequenceIds
-      .map((id) => this.project?.sequences?.find((seq) => seq._id === id))
+      .map((key) => this.project?.findSequence(key))
       .filter((seq): seq is SequenceModel => Boolean(seq));
   }
 
@@ -32,7 +32,7 @@ export class PlaylistModel {
     if (!this.project?.sequences) return [];
     return this.project.sequences.filter(
       (seq) =>
-        seq.projectId === this.projectId && !this.sequenceIds.includes(seq._id),
+        seq.projectId === this.projectId && !this.sequenceIds.includes(seq.key),
     );
   }
 
@@ -40,13 +40,13 @@ export class PlaylistModel {
     this.project?.removePlaylist(this);
   }
 
-  addSequence(sequenceOrId: SequenceModel | Id<"sequences">) {
+  addSequence(sequenceOrKey: SequenceModel | SequenceKey) {
     const sequenceId =
-      typeof sequenceOrId === "string" ? sequenceOrId : sequenceOrId._id;
+      typeof sequenceOrKey === "string" ? sequenceOrKey : sequenceOrKey.key;
     this.sequenceIds.push(sequenceId);
   }
 
-  removeSequence(sequenceId: Id<"sequences">) {
+  removeSequence(sequenceId: SequenceKey) {
     const index = this.sequenceIds.indexOf(sequenceId);
     if (index >= 0) this.sequenceIds.splice(index, 1);
   }

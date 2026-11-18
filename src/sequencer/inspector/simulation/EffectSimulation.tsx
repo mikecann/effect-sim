@@ -1,5 +1,5 @@
+import type { NodeKey } from "../../../../shared/models/docs";
 import { useMemo } from "react";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import type { EffectComponent } from "../../../common/effects/stringEffectDefinitions";
 import { FakeEffectProvider } from "./FakeEffectProvider";
 import { LedBoxes } from "./LedBoxes";
@@ -15,7 +15,7 @@ export function EffectSimulation({
   EffectComponent,
   props = {},
 }: EffectSimulationProps) {
-  const fakeStringId = useMemo(() => "simulation" as Id<"nodes">, []);
+  const fakeStringId = useMemo(() => "simulation" as NodeKey, []);
   const fakeString = useMemo(() => createFakeStringNode(), []);
 
   return (

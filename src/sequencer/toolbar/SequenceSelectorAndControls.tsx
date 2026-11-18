@@ -1,7 +1,7 @@
+import type { SequenceKey } from "../../../shared/models/docs";
 import { useState } from "react";
 import { ActionIcon, Group, Select, Tooltip } from "@mantine/core";
 import { IconEdit, IconPlus } from "@tabler/icons-react";
-import type { Id } from "../../../convex/_generated/dataModel";
 import EditSequenceModal from "./EditSequenceModal";
 import CreateSequenceModal from "./CreateSequenceModal";
 import { useSequencerPanel } from "../SequencerContext";
@@ -20,10 +20,10 @@ export default function SequenceSelectorAndControls() {
     <Group gap="xs">
       <Select
         size="xs"
-        data={sequences.map((s) => ({ label: s.name, value: s._id }))}
-        value={sequencer.sequence?.sequence._id ?? null}
+        data={sequences.map((s) => ({ label: s.name, value: s.key }))}
+        value={sequencer.sequence?.sequence.key ?? null}
         onChange={(value) =>
-          sequencer.setSelectedSequenceId(value as Id<"sequences"> | null)
+          sequencer.setSelectedSequenceId(value as SequenceKey | null)
         }
         placeholder="Select a sequence"
         checkIconPosition="right"
@@ -64,7 +64,7 @@ export default function SequenceSelectorAndControls() {
       <CreateSequenceModal
         opened={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(sequence) => sequencer.setSelectedSequenceId(sequence._id)}
+        onCreated={(sequence) => sequencer.setSelectedSequenceId(sequence.key)}
       />
     </Group>
   );

@@ -1,5 +1,5 @@
+import type { SequenceKey } from "../../../shared/models/docs";
 import { makeAutoObservable, reaction } from "mobx";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { SequenceModel } from "../../../shared/models/sequencer/SequenceModel";
 import type { PlaylistModel } from "../../../shared/models/PlaylistModel";
 import { SequenceRuntimeModel } from "../../sequencer/runtime/SequenceRuntimeModel";
@@ -12,7 +12,7 @@ export class PlaylistPlayerModel {
     makeAutoObservable(this);
   }
 
-  get currentSequenceId(): Id<"sequences"> | null {
+  get currentSequenceId(): SequenceKey | null {
     return this.playlist && this.playlist.sequenceIds.length > 0
       ? this.playlist.sequenceIds[this.currentSequenceIndex]
       : null;

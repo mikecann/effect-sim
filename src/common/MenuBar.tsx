@@ -13,6 +13,7 @@ import NewProjectModal from "./projects/NewProjectModal";
 import OpenProjectModal from "./projects/OpenProjectModal";
 import ProjectSettingsModal from "./projects/ProjectSettingsModal";
 import { HardwareInterfaceStatus } from "./hardware-interface/HardwareInterfaceStatus";
+import { SaveStatus } from "./SaveStatus";
 
 export default function MenuBar() {
   const app = useApp();
@@ -87,6 +88,7 @@ export default function MenuBar() {
                   Reset Layout
                 </Menu.Item>
                 <Menu.Item
+                  // eslint-disable-next-line mikecann-lint/click-shows-progress -- the copy is instant and the notification shows at once.
                   onClick={() => {
                     const json = app.layout.model.toJson();
                     navigator.clipboard.writeText(JSON.stringify(json));
@@ -210,7 +212,8 @@ export default function MenuBar() {
             ) : null}
           </Group>
 
-          <Group gap="xs">
+          <Group gap="md">
+            <SaveStatus />
             <HardwareInterfaceStatus />
           </Group>
         </Group>

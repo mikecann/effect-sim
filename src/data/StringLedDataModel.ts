@@ -1,9 +1,9 @@
+import type { NodeKey } from "../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
-import type { Id } from "../../convex/_generated/dataModel";
 import { StringNodeModel } from "../../shared/models/StringNodeModel";
 
 export interface StringLedDataApi {
-  _id: Id<"nodes">;
+  key: NodeKey;
   ledCount: number;
   setPixel(index: number, r: number, g: number, b: number): void;
   setAllPixels(r: number, g: number, b: number): void;
@@ -25,8 +25,8 @@ export class StringLedDataModel {
     });
   }
 
-  get _id(): Id<"nodes"> {
-    return this.string._id;
+  get key(): NodeKey {
+    return this.string.key;
   }
 
   get ledCount() {

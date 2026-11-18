@@ -1,3 +1,4 @@
+import type { NodeKey } from "../../../../shared/models/docs";
 import type { NodeDoc } from "../../../../shared/nodeTree";
 
 type StringNodeDoc = NodeDoc & { kind: "string" };
@@ -7,8 +8,7 @@ export const SIMULATED_LED_COUNT = 100;
 
 export function createFakeStringNode(): StringNodeDoc {
   return {
-    _id: "simulation" as Id<"nodes">,
-    _creationTime: Date.now(),
+    key: "simulation" as NodeKey,
     kind: "string",
     name: "Simulation",
     icon: { kind: "emoji", emoji: "💡" },

@@ -2,7 +2,7 @@ import { useEffect, useCallback } from "react";
 import { notifications } from "@mantine/notifications";
 import type { NodeDragData, TrackDropData } from "./useNodeToTrackDrag";
 import { useSequence } from "../SequencerContext";
-import { createTempId } from "../../../shared/models/types";
+import { createId } from "../../../shared/models/types";
 import { stringEffectDefinitionsArray } from "../../common/effects/stringEffectDefinitions";
 
 export function NodeToTrackDropHandler() {
@@ -96,7 +96,7 @@ export function NodeToTrackDropHandler() {
       };
 
       // Create the event
-      const eventId = createTempId("sequences");
+      const eventId = createId();
       try {
         sequence.sequence.addEvent(trackData.trackId, {
           id: eventId,

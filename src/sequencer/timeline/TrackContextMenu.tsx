@@ -1,6 +1,6 @@
 import { Menu } from "@mantine/core";
 import { useSequence } from "../SequencerContext";
-import { createTempId } from "../../../shared/models/types";
+import { createId } from "../../../shared/models/types";
 import { stringEffectDefinitionsArray } from "../../common/effects/stringEffectDefinitions";
 
 export function TrackContextMenu() {
@@ -38,7 +38,7 @@ export function TrackContextMenu() {
             const track = sequence.tracks.find((t) => t.id === context.trackId);
             if (!track) return;
 
-            const eventId = createTempId("sequences");
+            const eventId = createId();
             try {
               sequence.addEvent(context.trackId, {
                 id: eventId,
@@ -66,7 +66,7 @@ export function TrackContextMenu() {
             const track = sequence.tracks.find((t) => t.id === context.trackId);
             if (!track) return;
 
-            const eventId = createTempId("sequences");
+            const eventId = createId();
             try {
               sequence.addEvent(context.trackId, {
                 id: eventId,

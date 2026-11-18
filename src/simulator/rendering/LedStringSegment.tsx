@@ -82,7 +82,7 @@ export function LedStringSegment({
           e.stopPropagation();
           const project = app.project;
           if (!project) return;
-          const node = project.findModel("nodes", stringId);
+          const node = project.findNode(stringId);
           if (!node) return;
           if (
             "kind" in node &&

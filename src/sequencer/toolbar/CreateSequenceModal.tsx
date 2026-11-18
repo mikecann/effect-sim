@@ -1,11 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Button, Modal, Stack, TextInput, NumberInput } from "@mantine/core";
 import { useApp } from "../../common/AppContext";
 import { useAdaptiveStep } from "../../common/hooks/useAdaptiveStep";
-import { SequenceModel } from "../../../shared/models/sequencer/SequenceModel";
-import { createTempId, isTempId } from "../../../shared/models/types";
-import { when } from "mobx";
-import { useApiErrorHandler } from "../../common/errors";
+import type { SequenceModel } from "../../../shared/models/sequencer/SequenceModel";
 
 export default function CreateSequenceModal({
   opened,
@@ -18,41 +15,20 @@ export default function CreateSequenceModal({
 }) {
   const project = useApp().getProject();
 
-  const [isSaving, setIsSaving] = useState(false);
-  const onApiError = useApiErrorHandler();
-
   const newSequence = useMemo(
-    () =>
-      new SequenceModel(
-        {
-          name: "New Sequence",
-          numFrames: 500,
-          tracks: [],
-          projectId: project._id,
-          _creationTime: 0,
-          _id: createTempId("sequences"),
-        },
-        project,
-      ),
+    () => project.newSequence({ name: "New Sequence", numFrames: 500 }),
     [project],
   );
 
   const step = useAdaptiveStep(newSequence.numFrames);
 
-  const save = async () => {
-    if (isSaving) return;
-    setIsSaving(true);
+  // It has its key already, so it's added at once and saves in the
+  // background (the menu bar's save status shows it).
+  const save = () => {
+    if (!newSequence.name.trim()) return;
     project.addSequence(newSequence);
-    try {
-      // Have to do this kind of shennanings because lack of client-side id in Convex
-      await when(() => !isTempId(newSequence._id));
-      onCreated(newSequence);
-      onClose();
-    } catch (error) {
-      onApiError(error);
-    } finally {
-      setIsSaving(false);
-    }
+    onCreated(newSequence);
+    onClose();
   };
 
   return (
@@ -62,7 +38,6 @@ export default function CreateSequenceModal({
           label="Name"
           value={newSequence.name}
           autoFocus
-          disabled={isSaving}
           onChange={(e) => newSequence.setName(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && newSequence.name.trim()) {
@@ -76,17 +51,10 @@ export default function CreateSequenceModal({
           value={newSequence.numFrames}
           step={step}
           onChange={(value) => newSequence.setNumFrames(value as number)}
-          disabled={isSaving}
           min={1}
           max={10000}
         />
-        <Button
-          disabled={!newSequence.name.trim() || isSaving}
-          onClick={() => {
-            if (!newSequence.name.trim()) return;
-            save();
-          }}
-        >
+        <Button disabled={!newSequence.name.trim()} onClick={save}>
           Create
         </Button>
       </Stack>

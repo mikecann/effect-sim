@@ -1,6 +1,6 @@
+import type { SequenceKey } from "../../../shared/models/docs";
 import { Stack, Text, Select, Box, Group, Badge } from "@mantine/core";
 import { useState, useRef } from "react";
-import type { Id } from "../../../convex/_generated/dataModel";
 import {
   DndContext,
   closestCenter,
@@ -41,7 +41,7 @@ export function PlaylistSequencesSection({
 
   const sequenceCountsInPlaylist = playlist.availableSequences.reduce(
     (acc, seq) => {
-      acc[seq._id] = playlist.sequenceIds.filter((id) => id === seq._id).length;
+      acc[seq.key] = playlist.sequenceIds.filter((id) => id === seq.key).length;
       return acc;
     },
     {} as Record<string, number>,
@@ -56,7 +56,7 @@ export function PlaylistSequencesSection({
         <Select
           placeholder="Select a sequence"
           data={playlist.availableSequences.map((seq) => ({
-            value: seq._id,
+            value: seq.key,
             label: seq.name,
           }))}
           value={selectedSequenceId}
@@ -72,7 +72,7 @@ export function PlaylistSequencesSection({
           onChange={(value) => {
             if (!value) return;
             keepOpenRef.current = true;
-            playlist.addSequence(value as Id<"sequences">);
+            playlist.addSequence(value as SequenceKey);
             setSelectedSequenceId(null);
           }}
           renderOption={({ option }) => {

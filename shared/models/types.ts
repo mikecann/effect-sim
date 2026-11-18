@@ -2,21 +2,13 @@ import { StringNodeModel } from "./StringNodeModel";
 import { SwitchNodeModel } from "./SwitchNodeModel";
 import { VirtualStringNodeModel } from "./VirtualStringNodeModel";
 import { FolderNodeModel } from "./FolderNodeModel";
-import { Id, TableNames } from "../../convex/_generated/dataModel";
+import type { NodeKey } from "./docs";
 
 export type AllNodeModels =
   | StringNodeModel
   | FolderNodeModel
   | SwitchNodeModel
   | VirtualStringNodeModel;
-
-export const createTempId = <T extends TableNames>(tableName: T): Id<T> => {
-  return `temp_${tableName}_${Date.now()}` as Id<T>;
-};
-
-export const isTempId = <T extends TableNames>(id: Id<T>): boolean => {
-  return id.startsWith("temp_") as boolean;
-};
 
 export const createId = () =>
   `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -33,7 +25,7 @@ export type PathPoint = {
   };
 };
 export type Segment = {
-  nodeId: Id<"nodes">;
+  nodeId: NodeKey;
   fromIndex: number;
   toIndex: number;
   isReversed?: boolean;

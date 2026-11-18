@@ -61,7 +61,7 @@ export default function VirtualStringSettingsSection({
             const newSegments = [
               ...node.segments,
               {
-                nodeId: firstString._id,
+                nodeId: firstString.key,
                 fromIndex: 0,
                 toIndex: 10,
               },

@@ -1,10 +1,10 @@
+import type { NodeKey } from "../../../../shared/models/docs";
 import { Box, Group } from "@mantine/core";
 import { useContext, useEffect, useRef } from "react";
 import { LedDataStoreContext } from "../../../data/LedDataStoreContext";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import { SIMULATED_LED_COUNT } from "./utils";
 
-export function LedBoxes({ fakeStringId }: { fakeStringId: Id<"nodes"> }) {
+export function LedBoxes({ fakeStringId }: { fakeStringId: NodeKey }) {
   const ledDataContext = useContext(LedDataStoreContext);
   const boxRefs = useRef<Array<HTMLDivElement | null>>([]);
 

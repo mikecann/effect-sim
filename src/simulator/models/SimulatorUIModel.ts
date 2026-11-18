@@ -25,7 +25,7 @@ export class SimulatorUIModel {
     const placingId = this.app.placingStringId;
     if (!placingId) return null;
 
-    const stringNode = project.strings.find((s) => s._id === placingId);
+    const stringNode = project.strings.find((s) => s.key === placingId);
     if (!stringNode) return null;
 
     return new StringUIModel(stringNode, this);

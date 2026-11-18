@@ -16,7 +16,7 @@ export class StringUIModel {
   }
 
   get stringId() {
-    return this.string._id;
+    return this.string.key;
   }
 
   get pathPoints(): Point3D[] {

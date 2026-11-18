@@ -11,7 +11,6 @@ import {
 } from "@mantine/core";
 import { useApp } from "../../common/AppContext";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { StringNodeModel } from "../../../shared/models/StringNodeModel";
 import { iife } from "../../../shared/misc";
 import { useAdaptiveStep } from "../../common/hooks/useAdaptiveStep";
@@ -173,12 +172,12 @@ export default function StringSettingsSection({
         />
       </Stack>
 
-      {appModel.placingStringId === node._id ? (
+      {appModel.placingStringId === node.key ? (
         <Button color="red" onClick={() => appModel.cancelPlacingString()}>
           Cancel
         </Button>
       ) : (
-        <Button onClick={() => appModel.startPlacingString(node._id)}>
+        <Button onClick={() => appModel.startPlacingString(node.key)}>
           Place String
         </Button>
       )}

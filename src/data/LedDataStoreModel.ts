@@ -1,17 +1,17 @@
+import type { NodeKey } from "../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
-import type { Id } from "../../convex/_generated/dataModel";
 import type { ProjectModel } from "../../shared/models/ProjectModel";
 import { StringLedDataModel, StringLedDataApi } from "./StringLedDataModel";
 import { VirtualStringLedDataModel } from "./VirtualStringLedDataModel";
 
 export type StringsMap = Map<
-  Id<"nodes">,
+  NodeKey,
   { data: Uint8Array; ledCount: number }
 >;
 
 export class LedDataStoreModel {
-  _stringModels = new Map<Id<"nodes">, StringLedDataModel>();
-  _virtualModels = new Map<Id<"nodes">, VirtualStringLedDataModel>();
+  _stringModels = new Map<NodeKey, StringLedDataModel>();
+  _virtualModels = new Map<NodeKey, VirtualStringLedDataModel>();
 
   constructor(public project: ProjectModel) {
     makeAutoObservable<
@@ -25,7 +25,7 @@ export class LedDataStoreModel {
 
   get strings(): StringLedDataModel[] {
     // Sync cached models with current project strings
-    const currentIds = new Set(this.project.strings.map((s) => s._id));
+    const currentIds = new Set(this.project.strings.map((s) => s.key));
 
     // Remove models for deleted strings
     for (const id of this._stringModels.keys())
@@ -33,24 +33,24 @@ export class LedDataStoreModel {
 
     // Create or reuse models for current strings
     return this.project.strings.map((string) => {
-      let model = this._stringModels.get(string._id);
+      let model = this._stringModels.get(string.key);
       if (!model) {
         model = new StringLedDataModel(string);
-        this._stringModels.set(string._id, model);
+        this._stringModels.set(string.key, model);
       }
       return model;
     });
   }
 
-  get stringsMap(): Map<Id<"nodes">, StringLedDataModel> {
-    const map = new Map<Id<"nodes">, StringLedDataModel>();
-    for (const string of this.strings) map.set(string.string._id, string);
+  get stringsMap(): Map<NodeKey, StringLedDataModel> {
+    const map = new Map<NodeKey, StringLedDataModel>();
+    for (const string of this.strings) map.set(string.string.key, string);
     return map;
   }
 
   get virtuals(): VirtualStringLedDataModel[] {
     // Sync cached models with current project virtual strings
-    const currentIds = new Set(this.project.virtualStrings.map((v) => v._id));
+    const currentIds = new Set(this.project.virtualStrings.map((v) => v.key));
 
     // Remove models for deleted virtuals
     for (const id of this._virtualModels.keys())
@@ -58,10 +58,10 @@ export class LedDataStoreModel {
 
     // Create or reuse models for current virtual strings
     return this.project.virtualStrings.map((virtualString) => {
-      let model = this._virtualModels.get(virtualString._id);
+      let model = this._virtualModels.get(virtualString.key);
       if (!model) {
         model = new VirtualStringLedDataModel(this, virtualString);
-        this._virtualModels.set(virtualString._id, model);
+        this._virtualModels.set(virtualString.key, model);
       }
       return model;
     });
@@ -71,12 +71,12 @@ export class LedDataStoreModel {
     return [...this.strings, ...this.virtuals];
   }
 
-  get stringsAndVirtualsMap(): Map<Id<"nodes">, StringLedDataApi> {
-    const map = new Map<Id<"nodes">, StringLedDataApi>();
-    for (const string of this.strings) map.set(string.string._id, string);
+  get stringsAndVirtualsMap(): Map<NodeKey, StringLedDataApi> {
+    const map = new Map<NodeKey, StringLedDataApi>();
+    for (const string of this.strings) map.set(string.string.key, string);
 
     for (const virtual of this.virtuals)
-      map.set(virtual.virtualString._id, virtual);
+      map.set(virtual.virtualString.key, virtual);
 
     return map;
   }

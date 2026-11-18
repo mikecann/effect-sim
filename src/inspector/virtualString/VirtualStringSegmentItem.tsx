@@ -1,6 +1,6 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { Button, Group, RangeSlider, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { useApp } from "../../common/AppContext";
 import type { VirtualStringNodeSegmentModel } from "../../../shared/models/VirtualStringNodeSegmentModel";
 
@@ -63,7 +63,7 @@ export function VirtualStringSegmentItem({
             value={segmentModel.nodeId}
             onChange={(value) => {
               if (!value) return;
-              segmentModel.updateNodeId(value as Id<"nodes">);
+              segmentModel.updateNodeId(value as NodeKey);
             }}
             onDropdownClose={() => {
               segmentModel.setSelected(appModel, segmentModel.segmentIndex);

@@ -1,7 +1,7 @@
 import { makeAutoObservable } from "mobx";
 import type { Segment, Icon } from "./types";
 import { ProjectModel } from "./ProjectModel";
-import { NodeDocOfKind } from "../../convex/schema";
+import type { NodeDocOfKind } from "./docs";
 import { VirtualStringNodeSegmentModel } from "./VirtualStringNodeSegmentModel";
 import { exposeDocFields, WithAutoSetters } from "./modelUtils";
 

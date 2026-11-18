@@ -1,5 +1,5 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
-import type { Id } from "../../../convex/_generated/dataModel";
 import type { AllTrackEventModels } from "../../../shared/models/sequencer";
 import type { SequenceRuntimeModel } from "./SequenceRuntimeModel";
 import { stringEffectDefinitionsMap } from "../../common/effects/stringEffectDefinitions";
@@ -56,7 +56,7 @@ export class SequenceRuntimeEffectModel {
     return this.effectDefinition?.component as unknown;
   }
 
-  get targetNodeIds(): Id<"nodes">[] {
+  get targetNodeIds(): NodeKey[] {
     const nodeIds = this.nodeIds;
     if (nodeIds !== "all") return nodeIds;
 
@@ -65,7 +65,7 @@ export class SequenceRuntimeEffectModel {
     return this.runtime.allSwitchNodeIds;
   }
 
-  get nodeIds(): Id<"nodes">[] | "all" {
+  get nodeIds(): NodeKey[] | "all" {
     return this.event.appliesTo.kind === "nodes"
       ? this.event.appliesTo.nodeIds
       : "all";

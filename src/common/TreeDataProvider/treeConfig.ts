@@ -1,6 +1,6 @@
+import type { NodeKey } from "../../../shared/models/docs";
 import type { NodeDoc } from "../../../shared/nodeTree";
 import type { NodesTree } from "../../../shared/nodeTree";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { exhaustiveCheck } from "../../../shared/misc";
 import { getDropPosition } from "./getDropPosition";
 import {
@@ -9,7 +9,7 @@ import {
   isFolder,
 } from "../../../shared/nodeTree";
 
-const defaultItem = { _id: "root", kind: "folder", label: "root" } as NodeDoc;
+const defaultItem = { key: "root", kind: "folder", label: "root" } as NodeDoc;
 
 function getNodeName(data: NodeDoc): string {
   if (data.kind === "string") return data.name;
@@ -37,7 +37,7 @@ export function createTreeConfig(nodeTree: NodesTree | null) {
         if (itemId === "root") return defaultItem;
         const path = findNodePath({
           tree: nodeTree,
-          nodeId: itemId as Id<"nodes">,
+          nodeId: itemId as NodeKey,
         });
         if (path === null) return defaultItem;
         const node = getNodeAtPath(nodeTree, path);
@@ -48,15 +48,15 @@ export function createTreeConfig(nodeTree: NodesTree | null) {
       getChildren: (itemId: string) => {
         if (!nodeTree) return [];
         if (itemId === "root")
-          return nodeTree.map((node) => ({ _id: node._id }));
+          return nodeTree.map((node) => ({ key: node.key }));
         const path = findNodePath({
           tree: nodeTree,
-          nodeId: itemId as Id<"nodes">,
+          nodeId: itemId as NodeKey,
         });
         if (path === null) return [];
         const node = getNodeAtPath(nodeTree, path);
         if (!node || !isFolder(node)) return [];
-        return node.children.map((child) => ({ _id: child._id }));
+        return node.children.map((child) => ({ key: child.key }));
       },
     },
     canReorder: true as const,
@@ -68,14 +68,14 @@ export function createTreeConfig(nodeTree: NodesTree | null) {
         linearIndex?: number;
       },
       reorderNode: (args: {
-        nodeId: Id<"nodes">;
-        targetParentId: Id<"nodes"> | null;
+        nodeId: NodeKey;
+        targetParentId: NodeKey | null;
         targetIndex: number;
       }) => Promise<void>,
     ) => {
       if (items.length !== 1) return;
 
-      const draggedId = items[0].getId() as Id<"nodes">;
+      const draggedId = items[0].getId() as NodeKey;
       const targetId = target.item.getId();
 
       if (draggedId === targetId) return;
