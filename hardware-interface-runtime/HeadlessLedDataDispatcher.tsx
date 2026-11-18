@@ -28,8 +28,9 @@ export const HeadlessLedDataDispatcher = observer(
 
     useFrame(() => {
       // Off is brightness 0: keep sending black frames, as WLED goes back to
-      // its own effect a few seconds after DDP data stops.
-      const factor = app.isOn ? app.brightness : 0;
+      // its own effect a few seconds after DDP data stops. Mapping is black
+      // too, for now (HWIRAppModel.isMapping).
+      const factor = app.isOn && !app.isMapping ? app.brightness : 0;
       for (const [targetId, stringData] of ledDataStore.stringsMap) {
         const string = app.stringsMap.get(targetId);
         if (!string) continue;

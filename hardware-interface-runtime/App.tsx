@@ -5,7 +5,12 @@ import { LedDataStoreContext } from "../src/data/LedDataStoreContext";
 import { HeadlessPlaylistPlayer } from "./HeadlessPlaylistPlayer";
 import { HeadlessLedDataDispatcher } from "./HeadlessLedDataDispatcher";
 import { FrameProvider } from "../src/common/FixedFrameProvider";
-import { useDisplayControl, useProjectModel } from "./hooks";
+import {
+  useDisplayControl,
+  useHeartbeat,
+  useProjectModel,
+  useSwitchReporter,
+} from "./hooks";
 import { HWIRAppModel } from "./models/HWIRAppModel";
 import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
 import { AutoUpdater } from "./AutoUpdater";
@@ -15,6 +20,8 @@ const shouldAutoUpdate = process.env.HWIR_AUTO_UPDATE === "true";
 export const App = observer(({ app }: { app: HWIRAppModel }) => {
   useProjectModel(app);
   useDisplayControl(app);
+  useHeartbeat(app);
+  useSwitchReporter(app);
 
   if (!app.dataStore) return null;
   if (!app.project) return null;
@@ -28,7 +35,7 @@ export const App = observer(({ app }: { app: HWIRAppModel }) => {
       {shouldAutoUpdate ? <AutoUpdater app={app} /> : null}
       <FrameProvider fps={fps}>
         {app.strings.map((string) => (
-          <String key={string.string._id} model={string} />
+          <String key={string.string.key} model={string} />
         ))}
 
         {app.isPlaylistMode ? (

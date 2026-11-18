@@ -16,7 +16,7 @@ export const AutoUpdater = ({
   checkIntervalMs?: number;
 }) => {
   const projectId = app.project?._id;
-  const playlistId = app.playlist?._id;
+  const playlistId = app.playlist?.key;
 
   useEffect(() => {
     if (!projectId) return;

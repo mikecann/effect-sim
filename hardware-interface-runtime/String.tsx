@@ -13,6 +13,9 @@ export const String = observer(({ model }: { model: HWStringModel }) => {
     const host = model.string.ipAddress;
     const port = model.string.port;
     const name = model.string.name;
+    const { app } = model;
+    const key = model.string.key;
+    app.setConnection(key, "connecting");
 
     createAndConnectWLEDDDP({
       host,
@@ -22,8 +25,10 @@ export const String = observer(({ model }: { model: HWStringModel }) => {
       .then((conn) => {
         _connection = conn;
         setConnection(_connection);
+        app.setConnection(key, "live");
       })
       .catch((e) => {
+        app.setConnection(key, "offline");
         logger.error(`Error connecting to '${name}': ${e}`);
       });
 
@@ -33,6 +38,7 @@ export const String = observer(({ model }: { model: HWStringModel }) => {
         logger.error(`Error closing connection to '${name}': ${e}`);
       });
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect only when the address changes: HWStringModel is rebuilt whenever any string changes, and a reconnect blanks the string.
   }, [model.string.ipAddress, model.string.port]);
 
   useEffect(() => {
@@ -47,6 +53,7 @@ export const String = observer(({ model }: { model: HWStringModel }) => {
         );
       });
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the name is only for the error log; a rename shouldn't resubscribe.
   }, [connection, model.onData]);
 
   useEffect(() => {
@@ -58,6 +65,7 @@ export const String = observer(({ model }: { model: HWStringModel }) => {
         `Error setting brightness to ${brightness} for '${name}': ${e}`,
       );
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the name is only for the error log; a rename shouldn't resend the brightness.
   }, [model.string.brightness, connection]);
 
   return null;

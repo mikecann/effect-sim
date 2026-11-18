@@ -1,8 +1,8 @@
+import type { NodeKey } from "../shared/models/docs";
 import { useEffect } from "react";
 import type { WebSocket, RawData } from "ws";
 import { WebSocketServer } from "ws";
 import { HWIRAppModel } from "./models/HWIRAppModel";
-import { Id } from "../convex/_generated/dataModel";
 import { observer } from "mobx-react-lite";
 import { logger } from "./utils/logger";
 
@@ -32,7 +32,7 @@ export const ClientDataSocket = observer(({ app }: { app: HWIRAppModel }) => {
         const id = new TextDecoder().decode(u8.subarray(start, end));
         const rgbBytes = u8.subarray(end);
 
-        const string = app.stringsMap.get(id as Id<"nodes">);
+        const string = app.stringsMap.get(id as NodeKey);
         if (!string) return;
         string.onData.dispatch(rgbBytes);
       });
@@ -43,6 +43,7 @@ export const ClientDataSocket = observer(({ app }: { app: HWIRAppModel }) => {
       logger.info(`WS closing..`);
       wssControl.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one server for HWIR's life; each message reads app.stringsMap as it is then.
   }, []);
 
   return null;

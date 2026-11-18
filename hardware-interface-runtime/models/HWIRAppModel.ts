@@ -1,3 +1,4 @@
+import type { NodeKey, PlaylistKey } from "../../shared/models/docs";
 import { makeAutoObservable } from "mobx";
 import { Id } from "../../convex/_generated/dataModel";
 import { ProjectModel } from "../../shared/models/ProjectModel";
@@ -6,6 +7,11 @@ import { PlaylistModel } from "../../shared/models/PlaylistModel";
 import { StringNodeModel } from "../../shared/models/StringNodeModel";
 import { HWStringModel } from "./HWStringModel";
 import type { DisplaySettings } from "../../convex/schema";
+import type { Infer } from "convex/values";
+import type { stringConnectionValidator } from "../../convex/schema";
+
+/** How a string's UDP connection is doing (sent in the heartbeat, convex/hwir.ts). */
+export type StringConnection = Infer<typeof stringConnectionValidator>;
 
 export class HWIRAppModel {
   project: ProjectModel | null = null;
@@ -14,10 +20,14 @@ export class HWIRAppModel {
   // or if the remote has never been used: then HWIR plays its startup playlist.
   control: DisplaySettings | null = null;
 
+  // Each string's connection, by node key. Kept here rather than on
+  // HWStringModel, which is rebuilt whenever the project's strings change.
+  connections = new Map<NodeKey, StringConnection>();
+
   constructor(
     public readonly startupSettings: {
       projectId: Id<"projects">;
-      playlistId: Id<"playlists"> | null;
+      playlistId: PlaylistKey | null;
     },
   ) {
     makeAutoObservable(this);
@@ -37,6 +47,14 @@ export class HWIRAppModel {
     return this.control?.isOn ?? true;
   }
 
+  /**
+   * The editor is camera mapping (convex/mappingSession.ts). Until HWIR lights
+   * the session's patterns (Phase 3 of docs/rebuild-plan.md), it shows black.
+   */
+  get isMapping(): boolean {
+    return this.control?.mode.kind === "mapping";
+  }
+
   get brightness(): number {
     return this.control?.brightness ?? 1;
   }
@@ -52,15 +70,15 @@ export class HWIRAppModel {
   get playlist(): PlaylistModel | null {
     if (!this.project) return null;
     const mode = this.control?.mode;
+    if (mode?.kind === "mapping") return null;
 
     // A single sequence plays as a playlist of one, so it loops.
     if (mode?.kind === "sequence") {
-      const sequence = this.project.sequences.find((s) => s._id === mode.id);
+      const sequence = this.project.sequences.find((s) => s.key === mode.id);
       if (!sequence) return null;
       return new PlaylistModel(
         {
-          _id: `sequence:${mode.id}` as Id<"playlists">,
-          _creationTime: 0,
+          key: `sequence:${mode.id}`,
           name: sequence.name,
           sequenceIds: [mode.id],
           projectId: this.project._id,
@@ -71,7 +89,7 @@ export class HWIRAppModel {
 
     const playlistId =
       mode?.kind === "playlist" ? mode.id : this.startupSettings.playlistId;
-    return this.project.playlists.find((p) => p._id === playlistId) ?? null;
+    return this.project.playlists.find((p) => p.key === playlistId) ?? null;
   }
 
   setControl(control: DisplaySettings | null) {
@@ -83,8 +101,12 @@ export class HWIRAppModel {
     return this.project.strings.map((s) => new HWStringModel(this, s));
   }
 
-  get stringsMap(): Map<Id<"nodes">, HWStringModel> {
-    return new Map(this.strings.map((s) => [s.string._id, s]));
+  get stringsMap(): Map<NodeKey, HWStringModel> {
+    return new Map(this.strings.map((s) => [s.string.key, s]));
+  }
+
+  setConnection(key: NodeKey, connection: StringConnection) {
+    this.connections.set(key, connection);
   }
 
   setProject(project: ProjectModel) {
