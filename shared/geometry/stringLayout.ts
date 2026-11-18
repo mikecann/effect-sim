@@ -48,8 +48,13 @@ const lerp = (a: Point3, b: Point3, t: number): Point3 => ({
   z: a.z + (b.z - a.z) * t,
 });
 
-/** Shares `totalLeds` between segments in proportion to their lengths. */
+/**
+ * Shares `totalLeds` between segments in proportion to their lengths. Each
+ * segment gets at least one while there are enough to go round; with fewer
+ * LEDs than segments, some get none. Never hands out more than `totalLeds`.
+ */
 const allocateLeds = (lengths: number[], totalLeds: number) => {
+  const minimum = totalLeds >= lengths.length ? 1 : 0;
   const totalLength = lengths.reduce((a, b) => a + b, 0);
   const counts: number[] = [];
   let assigned = 0;
@@ -59,17 +64,22 @@ const allocateLeds = (lengths: number[], totalLeds: number) => {
       i === lengths.length - 1
         ? totalLeds - assigned
         : Math.round(totalLeds * proportion);
-    counts.push(Math.max(1, count));
-    assigned += Math.max(1, count);
+    counts.push(Math.max(minimum, count));
+    assigned += Math.max(minimum, count);
   });
 
-  // Rounding can hand out more than there are; take them back from the front.
-  while (assigned > totalLeds)
+  // Rounding can hand out more than there are; take them back from the
+  // front. Each pass takes at least one back (the minimum guarantees a
+  // segment above it while too many are out), so this ends.
+  while (assigned > totalLeds) {
+    const before = assigned;
     for (let i = 0; i < counts.length && assigned > totalLeds; i++)
-      if (counts[i] > 1) {
+      if (counts[i] > minimum) {
         counts[i] -= 1;
         assigned -= 1;
       }
+    if (assigned === before) break;
+  }
 
   return counts;
 };
@@ -82,10 +92,11 @@ const segmentLedPositions = (
   maxLeds: number,
 ): Point3[] => {
   const length = distance(start, end);
-  if (length < 0.001) return [];
+  if (!(length >= 0.001) || !(spacing > 0) || maxLeds < 1) return [];
 
+  // One past the cap is enough to know whether the end LED would fit.
   const positions: Point3[] = [];
-  for (let d = 0; d <= length; d += spacing)
+  for (let d = 0; d <= length && positions.length <= maxLeds; d += spacing)
     positions.push(lerp(start, end, d / length));
 
   // A last LED at the end when the spacing left a big enough gap.
@@ -101,15 +112,18 @@ export const resamplePath = (
   ledCount: number,
   spacingMeters: number,
 ): StringLayout => {
-  const positions: Array<Point3 | null> = new Array(ledCount).fill(null);
+  const leds = Number.isInteger(ledCount) && ledCount > 0 ? ledCount : 0;
+  const positions: Array<Point3 | null> = new Array(leds).fill(null);
   if (path.length < 2) return { isMapped: false, positions, segments: [] };
 
   const lengths = path
     .slice(0, -1)
     .map((start, i) => distance(start, path[i + 1]));
   const totalLength = lengths.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(totalLength) || !(spacingMeters > 0))
+    return { isMapped: false, positions, segments: [] };
   const bySpacing = Math.max(1, Math.round(totalLength / spacingMeters));
-  const counts = allocateLeds(lengths, Math.min(ledCount, bySpacing));
+  const counts = allocateLeds(lengths, Math.min(leds, bySpacing));
 
   let startLedIndex = 0;
   const segments = lengths.map((length, index) => {
@@ -133,7 +147,7 @@ export const resamplePath = (
       segment.ledCount,
     ).forEach((position, i) => {
       const led = segment.startLedIndex + i;
-      if (led < ledCount) positions[led] = position;
+      if (led < leds) positions[led] = position;
     });
 
   return { isMapped: false, positions, segments };
@@ -145,7 +159,12 @@ export const layoutString = (string: StringGeometry): StringLayout => {
     return {
       isMapped: true,
       positions: Array.from(
-        { length: string.ledCount },
+        {
+          length:
+            Number.isInteger(string.ledCount) && string.ledCount > 0
+              ? string.ledCount
+              : 0,
+        },
         (_, i) => string.ledPositions?.[i] ?? null,
       ),
       segments: [],

@@ -37,6 +37,9 @@ export type Repair = {
 };
 
 const MAX_LEDS = 10_000;
+// LED spacing, in metres: a real string's is a few centimetres. Outside this
+// the layout would place nothing (or, unchecked, sample without end).
+const SPACING_M = { min: 0.005, max: 10 };
 
 /**
  * Limits on what one row may hold. Convex refuses a document over 1 MiB,
@@ -130,6 +133,11 @@ export const findRowProblem = (
         node.ledCount > MAX_LEDS
       )
         return `A string has 1 to ${MAX_LEDS} LEDs, not ${node.ledCount}.`;
+      if (!(
+        node.spacingMeters >= SPACING_M.min &&
+        node.spacingMeters <= SPACING_M.max
+      ))
+        return `LED spacing is ${SPACING_M.min} to ${SPACING_M.max} m, not ${node.spacingMeters}.`;
       if (node.ledPositions && node.ledPositions.length !== node.ledCount)
         return `The string has ${node.ledCount} LEDs but ${node.ledPositions.length} mapped positions.`;
       const more =

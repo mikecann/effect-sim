@@ -413,6 +413,24 @@ describe("editor.sync", () => {
       );
     });
 
+    test("an LED spacing the layout can't use", async () => {
+      const { sync } = await setup();
+      const result = await sync(
+        [0, -0.1, 0.001, 50].map((spacingMeters, i) => ({
+          table: "nodes" as const,
+          op: "create" as const,
+          key: `s${i}`,
+          doc: { ...string("1", 3), spacingMeters } as NodeFields,
+        })),
+      );
+      expect(result.rejected.map((r) => r.reason)).toEqual([
+        "LED spacing is 0.005 to 10 m, not 0.",
+        "LED spacing is 0.005 to 10 m, not -0.1.",
+        "LED spacing is 0.005 to 10 m, not 0.001.",
+        "LED spacing is 0.005 to 10 m, not 50.",
+      ]);
+    });
+
     test("a folder moved inside itself", async () => {
       const { sync, node } = await setup();
       await sync([
