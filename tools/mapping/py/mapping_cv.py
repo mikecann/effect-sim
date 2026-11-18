@@ -820,6 +820,7 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
                 e += max(0.0, float(np.hypot(*(order[-1] - px(other)))) / ref - other["gap"] * 1.6 - 0.5)
             return e
 
+        ambiguous = False
         if whole and stray <= 0.5:
             # Which end is the first LED. Where a string doubles back (stair
             # rows) the chain can start from the wrong end; when the two
@@ -831,10 +832,24 @@ def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[
             clear = n > 1 or not len(rest := weights_a[np.hypot(*(peaks_a - pts[0]).T) > step * 0.8]) or rest.max() < 0.3 * weights_a.max()
             if ahead <= max(1.2, 0.25 * gap) and back - ahead >= 0.6 and clear:
                 status, out = "found", pts
+            elif back - ahead < 0.6:
+                ambiguous = True
+        # A partial chain is only trusted when it can only start one way: a
+        # second spot about as far from the anchor as its first (a loop, or a
+        # row doubling back) could be the block's first LED instead.
+        if len(pts) and not ambiguous:
+            d_first = float(np.hypot(*(pts[0] - px(anchor))))
+            d_all = np.hypot(*(peaks_a - px(anchor)).T)
+            far = np.hypot(*(peaks_a - pts[0]).T) > step * 0.8
+            rivals = far & (np.abs(d_all - d_first) <= 0.35 * ref)
+            first_w = float(weights_a[np.argmin(np.hypot(*(peaks_a - pts[0]).T))])
+            if rivals.any() and float(weights_a[rivals].max()) >= 0.5 * first_w:
+                ambiguous = True
+        info["ambiguous"] = ambiguous
         # A partial chain has to measure its own spacing (three spots at
         # least), close to the spacing at the anchor: spots twice as far
         # apart as the LEDs are pairs of LEDs merged into one.
-        if (status == "unclear" and n > 1 and tight >= 3 and abs(first - gap) <= 0.3
+        if (status == "unclear" and not ambiguous and n > 1 and tight >= 3 and abs(first - gap) <= 0.3
                 and 0.65 * near <= ref <= 1.5 * near):
             status, out = "partial", pts[: min(tight, n - 1)]
         if status == "unclear" and stray > 0.5:

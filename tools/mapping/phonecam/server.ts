@@ -29,6 +29,9 @@ const pendingSnaps = new Map<
 >();
 const pendingCommands = new Map<number, (r: PhoneInfo) => void>();
 
+// A 4032x3024 JPEG at quality 0.95 is about 3-8 MB.
+const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const ask = <T>(
@@ -100,11 +103,22 @@ Bun.serve({
         });
       if (r === "status") return json({ connected: !!phone, ...info });
       if (r === "upload" && req.method === "POST") {
+        // Only a photo the capture asked for, and only photo-sized: anything
+        // else is refused before its body is read.
         const id = Number(url.searchParams.get("id"));
-        const bytes = new Uint8Array(await req.arrayBuffer());
-        writeFileSync(join(latestDir, "latest.jpg"), bytes);
-        pendingSnaps.get(id)?.resolve(bytes);
+        const pending = pendingSnaps.get(id);
+        if (!pending) return json({ ok: false, error: "No photo asked for with that id" }, 409);
+        const length = Number(req.headers.get("content-length") ?? NaN);
+        if (!(length > 0 && length <= MAX_PHOTO_BYTES))
+          return json({ ok: false, error: "Photo missing or too big" }, 413);
         pendingSnaps.delete(id);
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        if (bytes.length > MAX_PHOTO_BYTES) {
+          pending.reject(new Error("The phone sent a photo that was too big."));
+          return json({ ok: false, error: "Photo too big" }, 413);
+        }
+        writeFileSync(join(latestDir, "latest.jpg"), bytes);
+        pending.resolve(bytes);
         return json({ ok: true });
       }
       if (r === "snap") {

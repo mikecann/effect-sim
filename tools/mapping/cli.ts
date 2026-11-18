@@ -38,6 +38,7 @@ import { makeScene, type HouseString, type Scene } from "./lib/scene";
 import { ConvexMapping } from "./lib/session";
 import { checkWrites } from "./lib/deployment";
 import { fillBlocks } from "./lib/blockFill";
+import { hwirSupportsRanges } from "./lib/hwirSupport";
 import { uploadView } from "./lib/upload";
 
 // The deployment comes from CONVEX_URL, or VITE_CONVEX_URL in the repo's
@@ -569,6 +570,9 @@ program
       }
 
       if (opts.fillBlocks) {
+        const presence = await mapping.presence(manifest.projectId);
+        const support = hwirSupportsRanges(presence?.commit, toolDir);
+        if (!support.ok) throw new Error(support.why);
         const refs: string[] = opts.fillBlocks;
         const keys = refs.includes("all")
           ? decoded.strings.map((s) => s.key)
