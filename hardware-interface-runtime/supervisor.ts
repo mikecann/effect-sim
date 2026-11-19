@@ -570,7 +570,7 @@ const runGate = async (sha: string): Promise<GateFailure | null> => {
   const unwritable = await probeStagingDir();
   if (unwritable) return { step: "staging dir", output: unwritable };
   const checkout = await prepareStaging(sha);
-  if (checkout) return { step: "staging checkout", output: checkout };
+  if (checkout) return checkout;
 
   // launchd always runs `bun run hwir`, so a commit that changes what that
   // script runs can't be proven here. It needs a person on the machine.
@@ -633,8 +633,8 @@ const probeStagingDir = async (): Promise<string | null> => {
   return `can't write to ${stagingDir} (${tail(result.output, 2) || `exit ${result.code}`}). Set HWIR_STAGING_DIR in .env.local to a folder on the internal disk.`;
 };
 
-/** Puts the staging worktree on sha. Returns an error message, or null. */
-const prepareStaging = async (sha: string): Promise<string | null> => {
+/** Puts the staging worktree on sha. Returns why it couldn't, or null. */
+const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
   if (await isOurWorktree(stagingDir)) {
     const checkout = await run(git, ["checkout", "--detach", "--force", sha], {
       cwd: stagingDir,
@@ -649,7 +649,10 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
     );
   }
   if (!isOursToReplace(stagingDir))
-    return `${stagingDir} has something in it that isn't this repo's staging worktree, so it's left alone. Empty it, or set HWIR_STAGING_DIR to a folder of its own.`;
+    return {
+      step: "staging dir",
+      output: `${stagingDir} has something in it that isn't this repo's staging worktree, so it's left alone. Empty it, or set HWIR_STAGING_DIR to a folder of its own.`,
+    };
   rmSync(stagingDir, { recursive: true, force: true });
   await run(git, ["worktree", "prune"]);
   const added = await run(git, [
@@ -660,7 +663,9 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
     stagingDir,
     sha,
   ]);
-  return added.code === 0 ? null : added.output;
+  return added.code === 0
+    ? null
+    : { step: "staging checkout", output: added.output };
 };
 
 /**
