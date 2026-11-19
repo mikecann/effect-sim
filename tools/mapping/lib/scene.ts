@@ -31,6 +31,8 @@ export type Scene = {
   height: number;
   windows: [number, number, number, number, number][];
   leds: SceneLed[];
+  /** Warm fairy lights that twinkle on their own: x, y, fade group (0 or 1). */
+  twinkles?: [number, number, number][];
 };
 
 /**
@@ -112,6 +114,8 @@ export const makeScene = (
     eyeHeight?: number;
     occludedFraction?: number;
     overlaps?: number;
+    /** How many twinkling warm lights to add (default none). */
+    twinkles?: number;
   } = {},
 ): Scene => {
   const width = opts.width ?? 1920;
@@ -236,7 +240,19 @@ export const makeScene = (
     [Math.round(width * 0.62), Math.round(height * 0.5), 45, 70, 18],
     [Math.round(width * 0.05), Math.round(height * 0.2), 12, 12, 140],
   ];
-  return { width, height, windows, leds };
+  // Twinkling warm lights hanging just above some of the strings, like the
+  // house's icicle lights (on the same circuit, so they can't be turned off).
+  const twinkles: [number, number, number][] = [];
+  const shown = leds.filter((l) => l.visible);
+  for (let n = 0; n < (opts.twinkles ?? 0) && shown.length; n++) {
+    const l = shown[Math.floor(random() * shown.length)];
+    twinkles.push([
+      l.x + (random() - 0.5) * 12,
+      l.y - 8 - random() * 22,
+      n % 2,
+    ]);
+  }
+  return { width, height, windows, leds, twinkles };
 };
 
 /** Which scene LEDs a pattern lights, in scene order. */

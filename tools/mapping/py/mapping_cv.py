@@ -21,6 +21,7 @@ import json
 import math
 import os
 import sys
+import traceback
 from dataclasses import dataclass
 
 import cv2
@@ -33,6 +34,7 @@ MAX_DECODE_SIDE = 4096
 # A pixel counts as lit when its brightening over the dark frame stands this
 # many noise sigmas above the background (and at least MIN_SIGNAL levels).
 NOISE_SIGMAS = 6.0
+COOL_RED_WEIGHT = float(os.environ.get("MAPPING_COOL_RED_WEIGHT", "0.6"))
 MIN_SIGNAL = 8.0
 
 # A pixel's code is trusted when every bit's normal/inverted contrast is at
@@ -56,7 +58,15 @@ def read_gray(path: str, scale: float = 1.0) -> np.ndarray:
     img = cv2.imread(path, cv2.IMREAD_COLOR)
     if img is None:
         raise SystemExit(f"Can't read image {path}")
-    gray = img.max(axis=2).astype(np.float32)
+    if os.environ.get("MAPPING_CHANNEL") == "cool":
+        # Only light bluer than warm white: the smart LEDs' white has as much
+        # blue as red, warm-white fairy lights (which may twinkle) have far
+        # less, so they drop out. Differences stay linear, so the decode
+        # works the same; warm changes go negative and are clipped later.
+        f = img.astype(np.float32)
+        gray = f[:, :, 0] - COOL_RED_WEIGHT * f[:, :, 2]
+    else:
+        gray = img.max(axis=2).astype(np.float32)
     if scale != 1.0:
         gray = cv2.resize(
             gray,
@@ -111,6 +121,30 @@ class Detection:
     confidence: float
     weakest_bit: int = 0
     rescued: bool = False
+
+
+def normalise_exposure(frames: dict[str, np.ndarray]) -> dict[str, float]:
+    """A phone that can't lock exposure brightens frames with few LEDs lit
+    and dims the busy ones. Lights that never change (other Christmas lights,
+    lit windows) show it: they're bright in the dark frame, so each frame is
+    scaled so they match the dark frame again. Skipped when there's too little
+    of that to measure (a synthetic or truly dark scene)."""
+    if os.environ.get("MAPPING_EXPOSURE_NORMALISE", "1") == "0":
+        return {}
+    dark = frames["dark"]
+    ref = (dark > 40) & (dark < 230)
+    if ref.sum() < 500:
+        return {}
+    gains = {}
+    for name, f in frames.items():
+        if name == "dark":
+            continue
+        ok = ref & (f < 250)
+        gain = float(np.median(f[ok] / dark[ok])) if ok.sum() >= 500 else 1.0
+        if 0.5 < gain < 2.0 and abs(gain - 1) > 0.01:
+            frames[name] = f / gain
+        gains[name] = round(gain, 3)
+    return gains
 
 
 def decode_pixels(frames: dict[str, np.ndarray], bits: int):
@@ -311,6 +345,7 @@ def decode_run(run_dir: str, out_name: str = "decoded.json") -> dict:
     width, height = image_size(files["all"])
     scale = min(1.0, MAX_DECODE_SIDE / max(width, height))
     frames = {n: read_gray(files[n], scale) for n in needed}
+    gains = normalise_exposure(frames)
     h, w = frames["all"].shape
 
     detections, rejected, signal = find_leds(frames, bits, total)
@@ -426,13 +461,20 @@ def draw_debug(photo_path: str, result: dict, out_path: str, highlight: list[dic
 
 def check_change(prev: str, cur: str) -> dict:
     """How much of the lit area changed between two frames. A frame taken
-    before the lights moved on to the next pattern changes almost nothing."""
+    before the lights moved on to the next pattern changes almost nothing.
+    Real scenes (sky, lit windows, other lights) aren't a flat dark
+    background, so the noise comes from the difference between the frames
+    and "lit" means a local (top-hat) highlight, not brighter than the
+    median."""
     a, b = read_gray(prev, 0.25), read_gray(cur, 0.25)
     if a.shape != b.shape:
         return {"changed": 1.0, "note": "frame size changed"}
-    noise = max(noise_sigma(a), noise_sigma(b), 1.0)
+    noise = max(noise_sigma(a - b), 1.0)
     threshold = max(MIN_SIGNAL * 2, NOISE_SIGMAS * noise)
-    bright = (a > threshold + np.median(a)) | (b > threshold + np.median(b))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+    bright = (cv2.morphologyEx(a, cv2.MORPH_TOPHAT, kernel) > threshold) | (
+        cv2.morphologyEx(b, cv2.MORPH_TOPHAT, kernel) > threshold
+    )
     if bright.sum() < 4:
         return {"changed": 0.0, "lit": int(bright.sum())}
     changed = (np.abs(a - b) > threshold) & bright
@@ -452,25 +494,42 @@ def check_pair(dark: str, all_on: str, normal: str, inverted: str) -> dict:
     return {"explained": float(explained), "lit": int(mask.sum())}
 
 
-def locate(dark: str, frame: str, expect: list[dict] | None = None, debug: str | None = None) -> dict:
+def locate(dark: str, frame: str, expect: list[dict] | None = None, debug: str | None = None, near: dict | None = None) -> dict:
     """Lit blobs in a frame (single-LED or single-string patterns), compared
     with where the decode put those LEDs."""
     d = read_gray(dark)
     f = read_gray(frame)
     h, w = f.shape
+    # Match the frame's exposure to the reference's on the lights that never
+    # change, for phones that can't lock exposure.
+    gains = normalise_exposure({"dark": d, "frame": f})
+    if gains.get("frame", 1.0) != 1.0 and 0.5 < gains["frame"] < 2.0:
+        f = f / gains["frame"]
     signal = np.clip(blur(f, 1.0) - blur(d, 1.0), 0, None)
     mask, _ = lit_mask(signal)
     n, labels, stats, centroids = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+    # Weighted centroids for every blob in one pass.
+    lab = labels.ravel()
+    wts = np.where(mask, signal, 0).ravel().astype(np.float64)
+    ys, xs = np.indices((h, w))
+    sw = np.bincount(lab, wts, n)
+    sx = np.bincount(lab, wts * xs.ravel(), n)
+    sy = np.bincount(lab, wts * ys.ravel(), n)
     blobs = []
     for k in range(1, n):
-        ys, xs = np.nonzero(labels == k)
-        wts = signal[ys, xs]
+        if sw[k] <= 0:
+            continue
         blobs.append({
-            "x": float((xs * wts).sum() / wts.sum()),
-            "y": float((ys * wts).sum() / wts.sum()),
-            "weight": float(wts.sum()),
-            "pixels": int(len(xs)),
+            "x": float(sx[k] / sw[k]),
+            "y": float(sy[k] / sw[k]),
+            "weight": float(sw[k]),
+            "pixels": int(stats[k, cv2.CC_STAT_AREA]),
         })
+    if near:
+        # Only where this LED can be (between its string's neighbours), so
+        # twinkling lights and windows elsewhere don't count.
+        cx, cy, r = near["u"] * w, near["v"] * h, near["radius"] * max(w, h)
+        blobs = [b for b in blobs if (b["x"] - cx) ** 2 + (b["y"] - cy) ** 2 <= r * r]
     blobs.sort(key=lambda b: -b["weight"])
     for b in blobs:
         b["u"], b["v"] = (b["x"] + 0.5) / w, (b["y"] + 0.5) / h
@@ -501,6 +560,440 @@ def locate(dark: str, frame: str, expect: list[dict] | None = None, debug: str |
             cv2.drawMarker(img, (round(b["x"]), round(b["y"])), (0, 0, 255), cv2.MARKER_CROSS, 12, 1)
         cv2.imwrite(debug, img, [cv2.IMWRITE_JPEG_QUALITY, 90])
     return result
+
+
+# ---------------------------------------------------------------- blocks of LEDs
+
+# Confidence of block-filled points: above the decoder's measured floor, below
+# a single LED measured on its own (`verify --fill`, 0.9).
+BLOCK_CONFIDENCE = 0.6
+
+_crop_cache: dict[tuple, np.ndarray] = {}
+
+
+def read_crop(path: str, crop: tuple[int, int, int, int] | None, channel: str) -> np.ndarray:
+    """One frame's brightness inside `crop` (x0, y0, x1, y1), cached: a fill
+    reads its off frames again for every set of blocks."""
+    key = (path, crop, channel)
+    if key in _crop_cache:
+        return _crop_cache[key]
+    img = cv2.imread(path, cv2.IMREAD_COLOR)
+    if img is None:
+        raise SystemExit(f"Can't read image {path}")
+    if crop:
+        x0, y0, x1, y1 = crop
+        img = img[y0:y1, x0:x1]
+    b, g, r = cv2.split(img)
+    if channel == "cool":
+        gray = b.astype(np.float32) - r.astype(np.float32)
+    else:
+        gray = cv2.max(cv2.max(b, g), r).astype(np.float32)
+    if len(_crop_cache) >= 40:
+        _crop_cache.pop(next(iter(_crop_cache)))
+    _crop_cache[key] = gray
+    return gray
+
+
+_gain_cache: dict[tuple, float] = {}
+
+
+def exposure_gain(path: str, ref: str, crop) -> float:
+    """How much brighter a phone that can't lock exposure took this frame
+    than `ref` (see normalise_exposure), cached per pair."""
+    key = (path, ref, crop)
+    if key not in _gain_cache:
+        frames = {"dark": read_crop(ref, crop, "max"), "f": read_crop(path, crop, "max")}
+        g = normalise_exposure(frames).get("f", 1.0)
+        _gain_cache[key] = g if 0.5 < g < 2.0 else 1.0
+    return _gain_cache[key]
+
+
+def steady_change(on: list[str], off: list[str], crop, box=None, channel: str = "max") -> np.ndarray:
+    """What a pattern lights, with twinkling lights taken out: the dimmest of
+    its frames minus the brightest of the off frames (any frame that lit
+    nothing near here counts as off). A light that twinkles on its own only
+    survives if it happened to be on in every pattern frame and off in every
+    off frame. Within `box` (x0, y0, x1, y1 of the crop) if given."""
+    ref = off[0]
+    pad = 14
+
+    def load(p: str, ch: str) -> np.ndarray:
+        img = read_crop(p, crop, ch)
+        if box:
+            x0, y0, x1, y1 = box
+            img = img[max(0, y0 - pad) : y1 + pad, max(0, x0 - pad) : x1 + pad]
+        return blur(img / exposure_gain(p, ref, crop), 1.0)
+
+    def change_of(ch: str) -> np.ndarray:
+        return np.minimum.reduce([load(p, ch) for p in on]) - np.maximum.reduce([load(p, ch) for p in off])
+
+    change = change_of("max")
+    if channel == "cool":
+        # Only light bluer than warm white counts (see read_gray): the warm
+        # icicle lights' change goes negative there.
+        change = np.minimum(change, change_of("cool") * 2.0)
+    return change
+
+
+def lit_in(change: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """The positive change, which of it is an LED's (a local top-hat over
+    the noise), and the threshold."""
+    noise = max(noise_sigma(change), 0.5)
+    threshold = max(MIN_SIGNAL * 2, NOISE_SIGMAS * noise)
+    positive = np.clip(change, 0, None)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
+    lit = (cv2.morphologyEx(positive, cv2.MORPH_TOPHAT, kernel) > threshold) & (positive > threshold)
+    return positive, lit, threshold
+
+
+def chain_from(start: np.ndarray, peaks: np.ndarray, first_reach: float, reach: float, count: int) -> list[int]:
+    """Peaks in order along a string: from `start` (the last known LED before
+    the block), each next one the nearest within reach, preferring to carry
+    on in the same direction."""
+    chain: list[int] = []
+    pos = start
+    heading = None
+    left = set(range(len(peaks)))
+    while left and len(chain) < count:
+        best, best_score = None, math.inf
+        limit = first_reach if not chain else reach
+        for k in left:
+            d = peaks[k] - pos
+            dist = float(np.hypot(*d))
+            if dist > limit or dist < 1e-6:
+                continue
+            score = dist
+            if heading is not None:
+                cos = float(np.dot(d, heading) / dist)
+                score *= 1.0 + 0.6 * (1.0 - cos)
+            if score < best_score:
+                best, best_score = k, score
+        if best is None:
+            break
+        d = peaks[best] - pos
+        heading = d / max(1e-6, float(np.hypot(*d)))
+        pos = peaks[best]
+        chain.append(best)
+        left.discard(best)
+    return chain
+
+
+# A block set is thrown out when more than this share of the LEDs already
+# placed (none of them in a block) light up in its frames, overall or on any
+# one string: the lights weren't showing the blocks. An HWIR rolled back to
+# before block patterns acks them but lights every LED. On the synthetic
+# house with twinkle (18 Nov): every such set lit 100% of them; real block
+# sets at most 28% (glow and twinkle next to a block), most under 5%. With
+# too few placed LEDs to check, the set isn't trusted either.
+KNOWN_LIT_MAX = 0.6
+KNOWN_MIN_SAMPLES = 20
+KNOWN_MIN_PER_STRING = 3
+
+
+def known_lit(change: np.ndarray, threshold: float, known: list[dict], blocks: list[dict], px, side: float) -> dict:
+    """How many of the placed LEDs are lit in the set's steady change, over
+    all and per string, leaving out those where a block was searched for
+    (each block searches the intersection of its regions)."""
+    h, w = change.shape
+    searched = np.zeros((h, w), bool)
+    for b in blocks:
+        for regs in (b.get("regions") or [], b.get("fallback") or []):
+            if not regs:
+                continue
+            m = np.ones((h, w), np.uint8)
+            for r in regs:
+                one = np.zeros((h, w), np.uint8)
+                c = px(r)
+                cv2.circle(one, (int(round(c[0])), int(round(c[1]))), int(round(r["radius"] * side)) + 6, 1, -1)
+                m &= one
+            searched |= m.astype(bool)
+    lit = total = 0
+    per: dict[str, list[int]] = {}
+    for k in known:
+        x, y = (int(round(v)) for v in px(k))
+        if not (0 <= x < w and 0 <= y < h) or searched[y, x]:
+            continue
+        on_ = bool(change[max(0, y - 2):y + 3, max(0, x - 2):x + 3].max() > threshold)
+        total += 1
+        lit += on_
+        c = per.setdefault(str(k.get("key", "")), [0, 0])
+        c[0] += on_
+        c[1] += 1
+    worst = max((l / t for l, t in per.values() if t >= KNOWN_MIN_PER_STRING), default=0.0)
+    # Strings with too few placed LEDs left to check whether they showed
+    # only their blocks: their blocks in this set aren't trusted.
+    unchecked = sorted({str(b.get("key")) for b in blocks if per.get(str(b.get("key")), [0, 0])[1] < KNOWN_MIN_PER_STRING})
+    return {"knownLit": lit, "knownChecked": total, "worstStringLit": round(worst, 3), "uncheckedStrings": unchecked}
+
+
+def locate_blocks(on: list[str], off: list[str], blocks: list[dict], crop: list[int] | None = None,
+                  channel: str = "max", debug: str | None = None, known: list[dict] | None = None) -> dict:
+    """Where each lit block's LEDs are. Every block in the frames was lit at
+    once, each searched for only inside its own region (circles round where its
+    string's known LEDs say it can be; regions of one set don't overlap).
+
+    A block is `{count, regions: [{u, v, radius}], before?: {u, v, gap},
+    after?: {u, v, gap}, side, step}`: `before` is the last known LED before
+    the block, `gap` LEDs short of its first one; `side` the anchor to chain
+    its spots from; `step` the usual distance between neighbouring LEDs near
+    it (u, v and lengths in units of the image's long side, as `near` in
+    `locate`). Points come back in index order, starting at block LED
+    `first`."""
+    w0, h0 = image_size(on[0])
+    crop_t = tuple(crop) if crop else None
+    ox, oy = (crop_t[0], crop_t[1]) if crop_t else (0, 0)
+    h, w = read_crop(on[0], crop_t, "max").shape
+    side = max(w0, h0)
+    pad = 14
+
+    def px(p: dict) -> np.ndarray:
+        return np.array([p["u"] * w0 - 0.5 - ox, p["v"] * h0 - 0.5 - oy])
+
+    thresholds = []
+
+    def one(b: dict, region_list: list[dict]) -> dict:
+        n = int(b["count"])
+        step = max(2.0, b["step"] * side)
+        regions = [(px(r), r["radius"] * side) for r in region_list]
+        # The region's bounding box: the smallest circle holds all of it.
+        c, r = min(regions, key=lambda cr: cr[1])
+        x0, y0 = max(0, int(c[0] - r)), max(0, int(c[1] - r))
+        x1, y1 = min(w, int(c[0] + r) + 1), min(h, int(c[1] + r) + 1)
+        if x1 <= x0 or y1 <= y0:
+            return {"status": "hidden", "why": "outside the frame"}
+        # This block's own off frames: the round's frames that lit nothing
+        # near it, as well as the plain off frames.
+        change = steady_change(b.get("on") or on, b.get("off") or off, crop_t, (x0, y0, x1, y1), channel)
+        positive_p, lit_p, threshold = lit_in(change)
+        thresholds.append(threshold)
+        px0, py0 = x0 - max(0, x0 - pad), y0 - max(0, y0 - pad)
+        positive = positive_p[py0 : py0 + (y1 - y0), px0 : px0 + (x1 - x0)]
+        lit_sub = lit_p[py0 : py0 + (y1 - y0), px0 : px0 + (x1 - x0)]
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        inside = np.ones(yy.shape, bool)
+        for cc, rr in regions:
+            inside &= (xx - cc[0]) ** 2 + (yy - cc[1]) ** 2 <= rr * rr
+        sub = positive
+        mask = lit_sub & inside
+        total = float(sub[mask].sum())
+        if mask.sum() < 3:
+            return {"status": "hidden", "lit": int(mask.sum())}
+        # LED centres: local maxima of the change, at most one per half step.
+        smooth = blur(sub, max(1.0, step * 0.2))
+        size = max(3, int(step * 0.45) | 1)
+        # Found over all lit light, then kept inside the region, so light
+        # that reaches in from outside it isn't taken for an LED at its edge.
+        peak = (smooth >= cv2.dilate(smooth, np.ones((size, size), np.uint8))) & lit_sub & (smooth > threshold)
+        pys, pxs = np.nonzero(peak & inside)
+        if len(pxs) == 0:
+            # Some light, but its brightest spot is outside the region: the
+            # block isn't where it was looked for.
+            edge = mask.sum() >= 6
+            return {"status": "unclear" if edge else "hidden", "lit": int(mask.sum()),
+                            **({"why": "light at the edge of the region"} if edge else {})}
+        # Refine each to the weighted centre of the light around it.
+        rad = max(1, int(step * 0.35))
+        peaks, weights = [], []
+        for py_, px_ in zip(pys, pxs):
+            ya, yb = max(0, py_ - rad), min(sub.shape[0], py_ + rad + 1)
+            xa, xb = max(0, px_ - rad), min(sub.shape[1], px_ + rad + 1)
+            wts = np.where(mask[ya:yb, xa:xb], sub[ya:yb, xa:xb], 0)
+            s = float(wts.sum())
+            if s <= 0:
+                continue
+            gy, gx = np.mgrid[ya:yb, xa:xb]
+            peaks.append([x0 + float((wts * gx).sum() / s), y0 + float((wts * gy).sum() / s)])
+            weights.append(s)
+        peaks_a = np.array(peaks)
+        weights_a = np.array(weights)
+        # Faint peaks next to strong ones are glare, not LEDs. Every detected
+        # peak still counts as a rival when judging which way a chain runs.
+        peaks_all = peaks_a
+        keep = weights_a >= 0.08 * weights_a.max()
+        peaks_a, weights_a = peaks_a[keep], weights_a[keep]
+
+        before, after = b.get("before"), b.get("after")
+        from_side = b.get("side") or ("before" if before else "after")
+        if not (before if from_side == "before" else after):
+            from_side = "before" if before else "after"
+        anchor, other = (before, after) if from_side == "before" else (after, before)
+        gap = anchor["gap"]
+        chain = chain_from(px(anchor), peaks_a, step * (gap * 1.5 + 1.0), step * 2.6, n)
+        pts = peaks_a[chain] if chain else np.zeros((0, 2))
+        # The chain holds while each spot is about a step on from the last
+        # (the first `gap` steps from the anchor): a longer link skipped an
+        # LED, a shorter one is two spots on one LED.
+        # How the chain's spots are spaced. A block lights only its own LEDs,
+        # so a chain with one spot per LED is those LEDs in order whatever
+        # the spacing; one with fewer could have lost its first LED (hidden),
+        # and would slip one along. That is judged against the chain's own
+        # spacing, which follows the string's perspective and corners
+        # better than the spacing on the anchor's far side.
+        links = np.hypot(*np.diff(np.vstack([px(anchor)[None, :], pts]), axis=0).T)
+        inner = links[1:]
+        near = max(2.0, b.get("spacing", b["step"]) * side)
+        ref = float(np.median(inner)) if len(inner) >= 2 else near
+        if not 0.4 * near <= ref <= 2.5 * near:
+            ref = near
+        # The first spot in LEDs from the anchor: `gap` if it's the block's
+        # first LED, about one more if that one is hidden.
+        first = float(links[0]) / ref if len(links) else math.inf
+        tight = 1 if len(pts) else 0
+        for d in inner:
+            if not 0.7 * ref <= d <= 1.3 * ref:
+                break
+            tight += 1
+        on_chain = 0.0
+        if len(pts):
+            d2 = ((peaks_a[:, None, :] - pts[None, :, :]) ** 2).sum(-1).min(1)
+            on_chain = float(weights_a[d2 <= (step * 1.2) ** 2].sum())
+        stray = 1.0 - on_chain / max(1e-6, float(weights_a.sum()))
+        info = {"peaks": int(len(peaks_a)), "chain": int(len(pts)), "tight": tight,
+                "firstStep": round(first, 2) if len(links) else None, "stray": round(stray, 3), "lit": int(mask.sum()),
+                "weight": round(total, 1)}
+
+        # - found: one spot per LED, none far out of step, the last next to
+        #   the LED placed after the block, nothing else lit in the region;
+        # - partial: the chain starts a step from the anchor and holds for a
+        #   few spots, then stops (the rest hidden, merged, or round a
+        #   corner): those are placed, the rest go into the next block;
+        # - unclear otherwise: the fill splits the block and tries again.
+        status, out = "unclear", None
+        whole = len(pts) == n and all(0.4 * ref <= d <= 2.2 * ref for d in inner)
+
+        def misfit(order: np.ndarray) -> float:
+            """How far, in LEDs, the block's ends sit from where the anchors
+            say they should: its first LED `gap` from the anchor, its last
+            `gap` from the LED placed on the other side."""
+            e = abs(float(np.hypot(*(order[0] - px(anchor)))) / ref - gap)
+            if other:
+                e += max(0.0, float(np.hypot(*(order[-1] - px(other)))) / ref - other["gap"] * 1.6 - 0.5)
+            return e
+
+        ambiguous = False
+        if whole and stray <= 0.5:
+            # Which end is the first LED. Where a string doubles back (stair
+            # rows) the chain can start from the wrong end; when the two
+            # ways round fit about as well, it's unclear.
+            ahead, back = misfit(pts), misfit(pts[::-1]) if n > 1 else math.inf
+            if back < ahead:
+                pts, ahead, back = pts[::-1], back, ahead
+            info["misfit"] = round(ahead, 2)
+            clear = n > 1 or not len(rest := weights_a[np.hypot(*(peaks_a - pts[0]).T) > step * 0.8]) or rest.max() < 0.3 * weights_a.max()
+            if ahead <= max(1.2, 0.25 * gap) and back - ahead >= 0.6 and clear:
+                status, out = "found", pts
+            elif back - ahead < 0.6:
+                ambiguous = True
+        # A partial chain is only trusted when it can only start one way: a
+        # second spot about as far from the anchor as its first (a loop, or a
+        # row doubling back) could be the block's first LED instead.
+        if len(pts) and not ambiguous:
+            d_first = float(np.hypot(*(pts[0] - px(anchor))))
+            d_all = np.hypot(*(peaks_all - px(anchor)).T)
+            far = np.hypot(*(peaks_all - pts[0]).T) > step * 0.8
+            rivals = far & (np.abs(d_all - d_first) <= 0.35 * ref)
+            # Any spot bright enough to be a peak counts, however dim next to
+            # the chain: a weight cut-off only narrows the case (Codex, 18 Nov).
+            # The cost is a split block now and then, which is safe.
+            if rivals.any():
+                ambiguous = True
+        info["ambiguous"] = ambiguous
+        # A partial chain has to measure its own spacing (three spots at
+        # least), close to the spacing at the anchor: spots twice as far
+        # apart as the LEDs are pairs of LEDs merged into one.
+        if (status == "unclear" and not ambiguous and n > 1 and tight >= 3 and abs(first - gap) <= 0.3
+                and 0.65 * near <= ref <= 1.5 * near):
+            status, out = "partial", pts[: min(tight, n - 1)]
+        if status == "unclear" and stray > 0.5:
+            # As much light again somewhere else in the region: something
+            # else changed (a twinkle that got through, a reflection).
+            info["why"] = "other light in the region"
+        res = {"status": status, **info}
+        if out is not None:
+            # In index order: chained from the LED after the block, the spots
+            # run backwards and end at its last LED.
+            if from_side == "after":
+                out = out[::-1]
+            res["first"] = 0 if from_side == "before" else n - len(out)
+            res["points"] = [
+                {"u": round((x + ox + 0.5) / w0, 6), "v": round((y + oy + 0.5) / h0, 6), "confidence": BLOCK_CONFIDENCE}
+                for x, y in out
+            ]
+        return res
+
+    results = []
+    for b in blocks:
+        res = one(b, b["regions"])
+        if res["status"] == "hidden" and b.get("fallback"):
+            # Nothing straight on from the anchor: look all round it, where
+            # nothing else in these frames was lit, before calling it hidden.
+            res = {**one(b, b["fallback"]), "wide": True}
+        results.append(res)
+
+    # The frames should light only the blocks. LEDs already placed lighting
+    # up as well means something else was showing (an HWIR rolled back after
+    # acking, which lights every LED for a pattern it doesn't know), so
+    # nothing from this set is trusted.
+    if known:
+        change = steady_change(on, off, crop_t, None, channel)
+        _, threshold = lit_mask(np.clip(change, 0, None).astype(np.float32))
+        check = known_lit(change, threshold, known, blocks, px, side)
+        if os.environ.get("MAPPING_DEBUG_OUTSIDE"):
+            open(os.environ["MAPPING_DEBUG_OUTSIDE"], "a").write(f"{check['knownLit']} {check['knownChecked']} {check['worstStringLit']}\n")
+        if check["knownChecked"] < KNOWN_MIN_SAMPLES:
+            results = [{"status": "unclear", "why": "too few placed LEDs to check the lights showed the blocks", **check}
+                       for _ in blocks]
+        elif (check["knownLit"] > KNOWN_LIT_MAX * check["knownChecked"]
+                or check["worstStringLit"] > KNOWN_LIT_MAX):
+            results = [{"status": "unclear", "why": "LEDs outside the blocks lit too: the lights may not be showing this pattern", **check}
+                       for _ in blocks]
+        elif check["uncheckedStrings"]:
+            results = [
+                {"status": "unclear", "why": "too few placed LEDs on this string to check it showed only its blocks", **check}
+                if str(b.get("key")) in check["uncheckedStrings"] else res
+                for b, res in zip(blocks, results)
+            ]
+
+    if debug:
+        # The set's own frames against the plain off frames, over the crop.
+        change = steady_change(on, off, crop_t, None, channel)
+        img = np.clip(np.clip(change, 0, None) * 1.5, 0, 255).astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        for b, res in zip(blocks, results):
+            c, r = min(((px(rr), rr["radius"] * side) for rr in b["regions"]), key=lambda cr: cr[1])
+            colour = {"found": (0, 220, 0), "partial": (0, 220, 255), "hidden": (120, 120, 120)}.get(res["status"], (0, 0, 255))
+            cv2.circle(img, (round(c[0]), round(c[1])), round(r), colour, 1, cv2.LINE_AA)
+            for p in res.get("points", []):
+                cv2.circle(img, (round(p["u"] * w0 - 0.5 - ox), round(p["v"] * h0 - 0.5 - oy)), 3, colour, -1, cv2.LINE_AA)
+            for key in ("before", "after"):
+                if b.get(key):
+                    q = px(b[key])
+                    cv2.drawMarker(img, (round(q[0]), round(q[1])), (255, 255, 255), cv2.MARKER_CROSS, 10, 1)
+        cv2.imwrite(debug, img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return {"threshold": round(float(np.median(thresholds)), 1) if thresholds else None, "blocks": results}
+
+
+def compose(base: str, source: str, source_dark: str, points: list[dict], radius: float, out: str) -> dict:
+    """A replay frame from saved photos: `base` (a real nearly dark frame, with
+    whatever twinkled when it was taken) plus the light `source` minus
+    `source_dark` shows within `radius` px of each of `points` (u, v). Lets a
+    block fill run against real twinkle without the lights."""
+    img = cv2.imread(base, cv2.IMREAD_COLOR).astype(np.float32)
+    h, w = img.shape[:2]
+    key = ("compose", source, source_dark)
+    if key not in _crop_cache:
+        _crop_cache[key] = np.clip(
+            cv2.imread(source, cv2.IMREAD_COLOR).astype(np.float32) - cv2.imread(source_dark, cv2.IMREAD_COLOR).astype(np.float32),
+            0, None,
+        )
+    light = _crop_cache[key]
+    mask = np.zeros((h, w), np.uint8)
+    for p in points:
+        cv2.circle(mask, (round(p["u"] * w - 0.5), round(p["v"] * h - 0.5)), max(1, round(radius)), 255, -1)
+    soft = cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (0, 0), max(0.5, radius / 4))[:, :, None]
+    img = np.clip(img + light * soft, 0, 255).astype(np.uint8)
+    cv2.imwrite(out, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    return {"file": out}
 
 
 # ---------------------------------------------------------------- synthetic frames
@@ -536,12 +1029,27 @@ def render(scene_path: str, lit: list[bool], out: str, seed: int, reference: boo
         sigma = led.get("sigma", 1.4)
         spot = led["brightness"] * (230 * np.exp(-r2 / (2 * sigma * sigma)) + 18 * np.exp(-r2 / (2 * 4.0 * 4.0)))
         img[iy - radius : iy + radius + 1, ix - radius : ix + radius + 1] += spot
+    # Warm-white fairy lights that twinkle on their own (the house's icicle
+    # lights): two groups fading opposite ways, each bulb flickering too, so
+    # every frame has a different set lit.
+    warm = np.zeros_like(img)
+    twinkles = scene.get("twinkles") or []
+    phase = rng.uniform() if twinkles else 0.0
+    for tx, ty, group in twinkles:
+        level = (phase if group else 1 - phase) * rng.uniform(0.3, 1.3)
+        ix, iy = int(round(tx)), int(round(ty))
+        if level < 0.05 or ix - radius < 0 or iy - radius < 0 or ix + radius >= w or iy + radius >= h:
+            continue
+        r2 = (kx - (tx - ix)) ** 2 + (ky - (ty - iy)) ** 2
+        warm[iy - radius : iy + radius + 1, ix - radius : ix + radius + 1] += level * 200 * np.exp(-r2 / (2 * 1.6 * 1.6))
     img = cv2.GaussianBlur(img, (0, 0), 0.6)
     img += rng.normal(0, 2.0, img.shape).astype(np.float32)
     img += rng.normal(0, 1.0, img.shape).astype(np.float32) * np.sqrt(np.clip(img, 0, None) / 8)
-    img = np.clip(img, 0, 255).astype(np.uint8)
-    tint = np.stack([img, img, (img * 0.92).astype(np.uint8)], axis=2)
-    cv2.imwrite(out, tint, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    bgr = np.stack([img, img, img * 0.92], axis=2)
+    if twinkles:
+        warm = cv2.GaussianBlur(warm, (0, 0), 0.6)
+        bgr += warm[:, :, None] * np.array([0.45, 0.8, 1.0], np.float32)
+    cv2.imwrite(out, np.clip(bgr, 0, 255).astype(np.uint8), [cv2.IMWRITE_JPEG_QUALITY, 92])
     return {"file": out, "width": w, "height": h}
 
 
@@ -552,7 +1060,10 @@ def worker() -> None:
     handlers = {
         "change": lambda a: check_change(a["prev"], a["cur"]),
         "pair": lambda a: check_pair(a["dark"], a["all"], a["normal"], a["inverted"]),
-        "locate": lambda a: locate(a["dark"], a["frame"], a.get("expect"), a.get("debug")),
+        "locate": lambda a: locate(a["dark"], a["frame"], a.get("expect"), a.get("debug"), a.get("near")),
+        "draw": lambda a: draw_debug(a["photo"], a["result"], a["out"], a.get("highlight")),
+        "blocks": lambda a: locate_blocks(a["on"], a["off"], a["blocks"], a.get("crop"), a.get("channel", "max"), a.get("debug"), a.get("known")),
+        "compose": lambda a: compose(a["base"], a["source"], a["sourceDark"], a["points"], a["radius"], a["out"]),
         "render": lambda a: render(a["scene"], a["lit"], a["out"], a.get("seed", 0), a.get("reference", False)),
         "size": lambda a: dict(zip(("width", "height"), image_size(a["file"]))),
     }
@@ -563,7 +1074,8 @@ def worker() -> None:
         try:
             res = {"id": req.get("id"), "ok": True, "result": handlers[req["cmd"]](req)}
         except BaseException as e:  # noqa: BLE001 - every failure goes back to the caller
-            res = {"id": req.get("id"), "ok": False, "error": f"{type(e).__name__}: {e}"}
+            where = traceback.extract_tb(e.__traceback__)[-1]
+            res = {"id": req.get("id"), "ok": False, "error": f"{type(e).__name__}: {e} (mapping_cv.py line {where.lineno})"}
         sys.stdout.write(json.dumps(res) + "\n")
         sys.stdout.flush()
 

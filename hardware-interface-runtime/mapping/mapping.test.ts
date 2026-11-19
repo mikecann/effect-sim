@@ -53,6 +53,28 @@ describe("mapping patterns", () => {
     });
   });
 
+  it("ranges light runs of LEDs, inclusive, on several strings at once", () => {
+    expect(
+      lit({
+        kind: "ranges",
+        ranges: [
+          { nodeKey: "a-roof", from: 1, to: 2 },
+          { nodeKey: "b-porch", from: 2, to: 2 },
+          // Past the end of the string, and a string HWIR doesn't have.
+          { nodeKey: "b-porch", from: 2, to: 9 },
+          { nodeKey: "c-gone", from: 0, to: 3 },
+        ],
+      }),
+    ).toEqual({
+      "a-roof": [0, 1, 1, 0],
+      "b-porch": [0, 0, 1],
+    });
+    expect(lit({ kind: "ranges", ranges: [] })).toEqual({
+      "a-roof": [0, 0, 0, 0],
+      "b-porch": [0, 0, 0],
+    });
+  });
+
   it("bit lights the LEDs whose shared code has the bit, and the rest when inverted", () => {
     // a-roof is codes 1-4, b-porch 5-7 (shared/mapping/ledCodes.ts).
     expect(codeOf(strings, "b-porch", 0)).toBe(5);

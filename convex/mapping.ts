@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { DatabaseReader } from "./_generated/server";
 import { editorMutation, hwirMutation } from "./auth";
+import { GATED_PATTERN_KINDS } from "../shared/mapping/ledCodes";
 import { displayControl, machines, mappingSession } from "./machines";
 import {
   mappingPatternValidator,
@@ -94,18 +95,77 @@ export const start = editorMutation({
 
 const sessionArgs = { sessionId: v.id("mappingSessions") };
 
+/** Most runs one `ranges` pattern may light (the session row holds it). */
+export const MAX_PATTERN_RANGES = 200;
+
 /** The camera wants this pattern next. */
 export const show = editorMutation({
   args: { ...sessionArgs, pattern: mappingPatternValidator },
-  handler: async (ctx, { sessionId, pattern }) =>
-    await mappingSession.send(ctx, sessionId, { type: "SHOW", pattern }),
+  handler: async (ctx, { sessionId, pattern }) => {
+    if (pattern.kind === "ranges") {
+      if (pattern.ranges.length > MAX_PATTERN_RANGES)
+        throw new ConvexError({
+          code: "NOT_ACCEPTED",
+          message: `A pattern lights at most ${MAX_PATTERN_RANGES} ranges.`,
+        });
+      for (const r of pattern.ranges)
+        if (
+          !Number.isInteger(r.from) ||
+          !Number.isInteger(r.to) ||
+          r.from < 0 ||
+          r.to < r.from
+        )
+          throw new ConvexError({
+            code: "NOT_ACCEPTED",
+            message: `Range ${r.from}-${r.to} of ${r.nodeKey} isn't a run of LED indexes.`,
+          });
+    }
+    if (GATED_PATTERN_KINDS.includes(pattern.kind)) {
+      // Only when the running HWIR says it renders this kind: an older one
+      // lights every LED for it and still acks (shared/mapping/ledCodes.ts).
+      const session = await ctx.db.get("mappingSessions", sessionId);
+      const presence =
+        session &&
+        (await ctx.db
+          .query("hwirPresences")
+          .withIndex("by_project", (q) => q.eq("projectId", session.projectId))
+          .unique());
+      if (!presence?.patterns?.includes(pattern.kind))
+        throw new ConvexError({
+          code: "NOT_ACCEPTED",
+          message: `The lights runtime (HWIR${presence ? ` ${presence.commit.slice(0, 7)}` : ""}) doesn't render "${pattern.kind}" patterns yet. Wait for it to update.`,
+        });
+    }
+    return await mappingSession.send(ctx, sessionId, {
+      type: "SHOW",
+      pattern,
+    });
+  },
 });
 
 /** HWIR has sent pattern `seq` out to the strings. */
 export const shown = hwirMutation({
-  args: { ...sessionArgs, seq: v.number() },
-  handler: async (ctx, { sessionId, seq }) =>
-    await mappingSession.send(ctx, sessionId, { type: "SHOWN", seq }),
+  args: {
+    ...sessionArgs,
+    seq: v.number(),
+    // The pattern kinds the acking HWIR renders; absent from an older one.
+    patterns: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { sessionId, seq, patterns }) => {
+    // An HWIR that doesn't render the requested kind (rolled back after the
+    // request went out) lit something else: its ack is dropped, so the
+    // camera times out instead of photographing the wrong LEDs. Dropped
+    // quietly, not thrown, so an old HWIR doesn't retry it every frame.
+    const row = await ctx.db.get("mappingSessions", sessionId);
+    if (
+      row?.state.kind === "capturing" &&
+      row.state.request.seq === seq &&
+      GATED_PATTERN_KINDS.includes(row.state.request.pattern.kind) &&
+      !patterns?.includes(row.state.request.pattern.kind)
+    )
+      return { status: "ignored" as const };
+    return await mappingSession.send(ctx, sessionId, { type: "SHOWN", seq });
+  },
 });
 
 /** The camera has its photos; the lights go back to playing. */

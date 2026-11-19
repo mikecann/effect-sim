@@ -1,3 +1,4 @@
+import { RENDERED_PATTERN_KINDS } from "../../shared/mapping/ledCodes";
 import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { useQuery } from "convex/react";
@@ -77,7 +78,7 @@ export const MappingDisplay = observer(
         logger.info(
           `Mapping: pattern ${seq} (${req.pattern.kind}) is showing${missed}`,
         );
-        shown({ sessionId, seq }).catch((e) => {
+        shown({ sessionId, seq, patterns: [...RENDERED_PATTERN_KINDS] }).catch((e) => {
           acker.forget(seq);
           logger.error(`Error acking mapping pattern ${seq}: ${e}`);
         });
