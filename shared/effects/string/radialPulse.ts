@@ -54,6 +54,9 @@ export const radialPulse = defineEffect({
           distance(string.getPosition(i), center) - travelled,
         );
         const level = Math.max(0, 1 - fromRing / props.width);
+        // Only the ring is drawn: everything else keeps what lower tracks
+        // painted, so a ring can roll over another effect (as wipe does).
+        if (level <= 0) continue;
         string.setPixel(
           i,
           Math.round(props.color[0] * level),
