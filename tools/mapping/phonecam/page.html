@@ -19,12 +19,38 @@
   #start { position: fixed; inset: 0; margin: auto; width: 220px; height: 56px; font-size: 18px; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c33; margin-right: 6px; }
   .dot.ok { background: #3a3; }
+  #say { position: fixed; left: 10px; right: 10px; top: calc(10px + env(safe-area-inset-top)); padding: 14px 16px;
+    background: rgba(0,0,0,.72); border-radius: 16px; color: #fff; font-size: 24px; line-height: 1.25; font-weight: 600;
+    display: flex; gap: 12px; align-items: flex-start; }
+  #say[hidden] { display: none; }
+  #say p { margin: 0; flex: 1; }
+  #say.fresh { animation: pop .5s ease-out; }
+  @keyframes pop { from { background: rgba(255,255,255,.45); } }
+  #again { flex: none; font-size: 15px; padding: 6px 10px; }
+  #hold { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); padding: 10px 16px; border-radius: 999px;
+    background: rgba(0,0,0,.7); color: #fff; font-size: 18px; }
+  #hold[hidden] { display: none; }
+  #replies { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; }
+  #replies[hidden] { display: none; }
+  #replies button { font-size: 17px; padding: 9px 14px; }
+  #reply { flex: 1; min-width: 120px; font: inherit; font-size: 16px; color: #eee; background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 8px 14px; }
+  #sent { font-size: 13px; color: #9c9; }
 </style>
 </head>
 <body>
 <video id="v" playsinline muted autoplay></video>
 <button id="start">Start camera</button>
+<div id="say" hidden><p id="sayText"></p><button id="again" aria-label="Say it again">🔊</button></div>
+<div id="hold" hidden>📸 Hold still</div>
 <div id="bar" hidden>
+  <div id="replies">
+    <button data-reply="Done">Done</button>
+    <button data-reply="Wait">Wait</button>
+    <button data-reply="Say that again">Again?</button>
+    <form id="replyForm" style="display:contents"><input id="reply" placeholder="Say or type…" autocomplete="off" enterkeyhint="send" /></form>
+    <span id="sent"></span>
+  </div>
   <span id="lenses"></span>
   <span id="status"><span class="dot" id="dot"></span><span id="text">Connecting…</span></span>
 </div>
@@ -34,7 +60,51 @@ const lensesEl = document.getElementById("lenses");
 const bar = document.getElementById("bar");
 const dot = document.getElementById("dot");
 const text = document.getElementById("text");
-let stream, track, ws, lensId, wakeLock;
+let stream, track, ws, lensId, wakeLock, lastSaid = null, spokenId = 0;
+const sayEl = document.getElementById("say");
+const sayText = document.getElementById("sayText");
+const holdEl = document.getElementById("hold");
+const sentEl = document.getElementById("sent");
+
+// Instructions from the Mac: shown big and read out.
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  return voices.find((x) => x.lang === "en-AU") || voices.find((x) => x.lang === "en-GB") || voices.find((x) => x.lang.startsWith("en"));
+}
+function speak(words) {
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(words);
+  const voice = pickVoice();
+  if (voice) u.voice = voice;
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+function showSaid(msg) {
+  lastSaid = msg;
+  sayText.textContent = msg.text;
+  sayEl.hidden = false;
+  sayEl.classList.remove("fresh"); void sayEl.offsetWidth; sayEl.classList.add("fresh");
+  if (msg.id !== spokenId) { spokenId = msg.id; speak(msg.text); }
+}
+document.getElementById("again").onclick = () => lastSaid && speak(lastSaid.text);
+
+// Answers back to the Mac.
+let sentTimer;
+function reply(words) {
+  words = words.trim();
+  if (!words) return;
+  if (ws?.readyState !== 1) { sentEl.textContent = "Not connected"; return; }
+  ws.send(JSON.stringify({ type: "reply", text: words }));
+  sentEl.textContent = `Sent: ${words.length > 24 ? words.slice(0, 24) + "…" : words}`;
+  clearTimeout(sentTimer); sentTimer = setTimeout(() => (sentEl.textContent = ""), 4000);
+}
+document.querySelectorAll("[data-reply]").forEach((b) => (b.onclick = () => reply(b.dataset.reply)));
+document.getElementById("replyForm").onsubmit = (e) => {
+  e.preventDefault();
+  const input = document.getElementById("reply");
+  reply(input.value); input.value = ""; input.blur();
+};
 
 const base = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
 
@@ -80,6 +150,7 @@ function nextFrame() {
 }
 
 async function snap(id) {
+  holdEl.hidden = false;
   try {
     // Two fresh frames, so the photo is from after the request.
     await nextFrame();
@@ -92,6 +163,8 @@ async function snap(id) {
     await fetch(`${base}upload?id=${id}`, { method: "POST", body: blob });
   } catch (e) {
     ws.send(JSON.stringify({ type: "snapError", id, error: String(e) }));
+  } finally {
+    holdEl.hidden = true;
   }
 }
 
@@ -128,6 +201,7 @@ function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "snap") snap(msg.id);
+    else if (msg.type === "say") showSaid(msg);
     else if (msg.type === "lock") setMode(msg.id, "manual");
     else if (msg.type === "auto") setMode(msg.id, "continuous");
   };
@@ -143,6 +217,8 @@ document.addEventListener("visibilitychange", () => {
 document.getElementById("start").onclick = async (e) => {
   e.target.disabled = true;
   e.target.textContent = "Starting…";
+  // Speech on iPhone only works after a tap has spoken once.
+  speak("Camera on.");
   try {
     // Ask once so the lens names are readable, then list the back lenses.
     const first = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
