@@ -37,12 +37,15 @@ bun run dev
 
 Later on, `npx convex deployment select local` picks the local backend again. `bun run dev` starts `convex dev` and Vite together and opens the editor.
 
-The editor asks for its token before it can save. Make one for your local backend and paste it into the editor's token modal:
+A new backend needs Convex Auth's settings before it will take the functions. Locally the Google ones can be placeholders, as a local backend doesn't ask anyone to sign in until `REQUIRE_TOKENS` is `"true"`:
 
 ```bash
-npx convex env set EDITOR_TOKEN "$(openssl rand -hex 24)"
-npx convex env get EDITOR_TOKEN
+bun tools/setAuthKeys.ts
+npx convex env set AUTH_GOOGLE_CLIENT_ID unused
+npx convex env set AUTH_GOOGLE_CLIENT_SECRET unused
 ```
+
+To try the Google sign-in against a backend, use the dev deployment (`expert-viper-771`), which has the real client and `AUTH_ALLOW_LOCALHOST_REDIRECTS=true` so Google can send you back to `localhost:5173`.
 
 For real data, import a production backup into the local backend with `npx convex import --replace-all <zip>`.
 
@@ -105,13 +108,8 @@ Use `bun run test`, not `bun test` (that's Bun's own runner). Lint is [mikecann-
 
 ## Deployments
 
-- **Convex**: production is `aromatic-cardinal-985`, used by HWIR, the editor and the Lights app. It's deployed by hand with `npx convex deploy`, never from CI.
-- **Editor**: a Cloudflare Worker serving the built app (`wrangler.jsonc`). Build it against production and deploy:
-
-  ```bash
-  VITE_CONVEX_URL=https://aromatic-cardinal-985.convex.cloud bunx vite build
-  bunx wrangler deploy
-  ```
+- **Convex and the editor**: production is `aromatic-cardinal-985`, used by HWIR, the editor and the Lights app. The editor is a Cloudflare Worker serving the built app (`wrangler.jsonc`) at [effect-sim.mikeysee.workers.dev](https://effect-sim.mikeysee.workers.dev). Cloudflare's Workers Build runs `npx convex deploy --cmd 'npm run build'` with the production deploy key on every merge to `main`, so a merge deploys both. Builds of other branches always fail there, as Convex refuses a production key off `main`.
+- **Signing in**: the editor signs in with Google (Convex Auth v2, `convex/editors.ts`). Only the addresses in `EDITOR_EMAILS` (comma separated) get an account, and that list is checked on every call. The Google OAuth client is "effect-sim editor (Convex)"; its redirect URIs are `<deployment>.convex.site/oauth/google/callback` for production and dev. A deployment needs `AUTH_PRIVATE_KEY` and `AUTH_JWKS` (`bun tools/setAuthKeys.ts [--prod]`), `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` and `EDITOR_EMAILS`.
 
 - **HWIR**: runs on Tinker Desk, a Mac by the house, under launchd (`com.mikecann.effect-sim.hwir.plist`), with `HWIR_AUTO_UPDATE=true`. Anything merged to `main` reaches the lights within about a minute, once the supervisor's checks pass. `check-hwir-status.sh` shows whether the service is running.
 - **Lights**: installed straight onto the phone with `ios/scripts/install-phone.sh`.

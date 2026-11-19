@@ -1,6 +1,8 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
+import { api } from "../convex/_generated/api";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "flexlayout-react/style/dark.css";
@@ -17,6 +19,7 @@ import {
 import { AppProvider } from "./common/AppContext.tsx";
 import { ProjectFrameProvider } from "./common/ProjectFixedFrameProvider";
 import { AppSyncer } from "./common/models/AppSyncer.tsx";
+import { EditorGate } from "./common/auth/EditorGate.tsx";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
@@ -47,24 +50,32 @@ if (window.location.pathname === "/machines")
 else
   createRoot(rootElement).render(
     <StrictMode>
-      <ConvexProvider client={convex}>
+      <ConvexAuthProvider
+        client={convex}
+        api={{
+          refreshSession: api.editors.refreshSession,
+          signOut: api.editors.signOut,
+        }}
+      >
         <RouteProvider>
           <MantineProvider
             theme={theme}
             defaultColorScheme="dark"
             cssVariablesResolver={v8CssVariablesResolver}
           >
-            <ConfirmationProvider>
-              <AppProvider>
-                <ProjectFrameProvider>
-                  <AppSyncer>
-                    <App />
-                  </AppSyncer>
-                </ProjectFrameProvider>
-              </AppProvider>
-            </ConfirmationProvider>
+            <EditorGate>
+              <ConfirmationProvider>
+                <AppProvider>
+                  <ProjectFrameProvider>
+                    <AppSyncer>
+                      <App />
+                    </AppSyncer>
+                  </ProjectFrameProvider>
+                </AppProvider>
+              </ConfirmationProvider>
+            </EditorGate>
           </MantineProvider>
         </RouteProvider>
-      </ConvexProvider>
+      </ConvexAuthProvider>
     </StrictMode>,
   );

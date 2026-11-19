@@ -40,7 +40,7 @@ Any row that moves through steps runs on `@convex-dev/state-machines` (vendored 
 - `nodes`, `sequences` and `playlists` rows have a client-made `key` (`crypto.randomUUID()`). Every reference between rows (`parentId`, `segments[].nodeId`, `appliesTo.nodeIds`, `sequenceIds`, the display mode's `id`) holds keys, not Convex ids. Rows migrated from before keys use their old `_id` string as the key. Projects stay keyed by `_id`.
 - The editor saves through one mutation, `editor.sync`, which applies a batch of `create | update | delete` changes atomically. A row that breaks a rule is rejected on its own and the rest applies. Deletes repair dangling references in the same mutation. `LIMITS` in `convex/editorSync.ts` caps row sizes and counts.
 - On the client, `src/common/models/sync/ProjectSyncModel.ts` owns saving. The MobX models are the truth while editing.
-- Every mutation takes a role `token` (`EDITOR_TOKEN`, `HWIR_TOKEN`, `REMOTE_TOKEN`, checked in `convex/roles.ts`). Queries are public. Build new mutations with `editorMutation`, `hwirMutation`, `remoteMutation` or `roleMutation(...)` from `convex/auth.ts`.
+- Every mutation takes a role `token` (`EDITOR_TOKEN`, `HWIR_TOKEN`, `REMOTE_TOKEN`, checked in `convex/roles.ts`), except that the web editor signs in with Google instead (`convex/editors.ts`) and counts as the editor role. Queries are public, apart from `mapping.views` (photos of the house). Build new mutations with `editorMutation`, `hwirMutation`, `remoteMutation` or `roleMutation(...)` from `convex/auth.ts`.
 - Schema changes to production go widen then switch (see "Cutover" in `docs/rebuild-plan.md`), because production rows must keep working while clients update.
 
 ## Effects

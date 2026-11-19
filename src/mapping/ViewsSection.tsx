@@ -1,3 +1,4 @@
+import { useMutation } from "convex/react";
 import {
   Alert,
   Badge,
@@ -14,7 +15,6 @@ import {
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useApp } from "../common/AppContext";
-import { useEditorMutation } from "../common/auth/useEditorMutation";
 import type { MappingTool } from "../common/models/editorTool";
 import { collectSurfaceMeshes } from "../simulator/placing/raycast";
 import { projectViews, viewCoverage, type AlignedView } from "./projectLeds";
@@ -264,7 +264,7 @@ export function ViewsSection({
 }) {
   const app = useApp();
   const mapping = app.mapping;
-  const solved = useEditorMutation(api.mapping.solved);
+  const solved = useMutation(api.mapping.solved);
   const aligned: AlignedView[] = views.flatMap((view) => {
     const alignment = mapping.alignmentOf(view.name);
     return alignment

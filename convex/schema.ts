@@ -368,6 +368,13 @@ export const mappingSessionState = v.union(
 );
 
 export default defineSchema({
+  // The people who may use the editor: one row per Google account that has
+  // signed in (convex/editors.ts). Only addresses on EDITOR_EMAILS get one.
+  editors: defineTable({
+    email: v.string(),
+    name: v.optional(v.string()),
+    picture: v.optional(v.string()),
+  }),
   // One row per project: the display's on/off, mode and brightness.
   displayControls: defineTable({
     projectId: v.id("projects"),

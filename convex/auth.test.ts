@@ -2,7 +2,8 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { register } from "@convex-dev/state-machines/test";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 const modules = import.meta.glob("./**/*.ts");
 const tokens = { editor: "e-token", hwir: "h-token", remote: "r-token" };
@@ -162,5 +163,122 @@ describe("tokens", () => {
         on: true,
       }),
     ).rejects.toThrow(/isn't the hwir or editor token/);
+  });
+});
+
+describe("signing in to the editor with Google", () => {
+  const ADMIN = "me@example.com";
+  const google = (email: string | undefined, emailVerified = true) => ({
+    name: "google" as const,
+    accountId: "google-sub",
+    profile: { id: "google-sub", email, emailVerified, name: "Me" },
+  });
+
+  const signedIn = async () => {
+    vi.stubEnv("EDITOR_EMAILS", ` other@example.com , ${ADMIN.toUpperCase()}`);
+    const { t, projectId } = await setup();
+    const editorId = await t.mutation(internal.editors.createEditor, {
+      provider: google(ADMIN),
+    });
+    vi.stubEnv("REQUIRE_TOKENS", "true");
+    return {
+      t,
+      projectId,
+      editorId,
+      asEditor: t.withIdentity({ subject: editorId }),
+    };
+  };
+
+  test("makes an account only for a verified address on EDITOR_EMAILS", async () => {
+    vi.stubEnv("EDITOR_EMAILS", ADMIN);
+    const { t } = await setup();
+    for (const provider of [
+      google("stranger@example.com"),
+      google(ADMIN, false),
+      google(undefined),
+    ])
+      await expect(
+        t.mutation(internal.editors.createEditor, { provider }),
+      ).rejects.toThrow(/can't use the editor/);
+    vi.stubEnv("EDITOR_EMAILS", "");
+    await expect(
+      t.mutation(internal.editors.createEditor, { provider: google(ADMIN) }),
+    ).rejects.toThrow(/can't use the editor/);
+  });
+
+  test("a signed-in editor saves without a token", async () => {
+    const { projectId, asEditor } = await signedIn();
+    const result = await asEditor.mutation(api.editor.sync, {
+      projectId,
+      changes: [],
+    });
+    expect(result.applied).toBe(0);
+    expect(await asEditor.query(api.editors.me, {})).toEqual({
+      editor: { email: ADMIN, name: "Me" },
+      signInNeeded: true,
+    });
+  });
+
+  test("a signed-in editor still can't act as HWIR or the phone", async () => {
+    const { projectId, asEditor } = await signedIn();
+    await expect(
+      asEditor.mutation(api.display.request, { projectId, isOn: false }),
+    ).rejects.toThrow(/needs the remote token/);
+    await expect(
+      asEditor.mutation(api.hwir.heartbeat, {
+        projectId,
+        commit: "abc",
+        fps: 15,
+        strings: [],
+      }),
+    ).rejects.toThrow(/needs the hwir token/);
+  });
+
+  test("a wrong token is refused even when signed in", async () => {
+    const { projectId, asEditor } = await signedIn();
+    await expect(
+      asEditor.mutation(api.editor.sync, {
+        token: "guess",
+        projectId,
+        changes: [],
+      }),
+    ).rejects.toThrow(/isn't the editor token/);
+  });
+
+  test("taking the address off EDITOR_EMAILS locks the session out at once", async () => {
+    const { projectId, asEditor, t, editorId } = await signedIn();
+    vi.stubEnv("EDITOR_EMAILS", "other@example.com");
+    await expect(
+      asEditor.mutation(api.editor.sync, { projectId, changes: [] }),
+    ).rejects.toThrow(/needs the editor token/);
+    expect(await asEditor.query(api.editors.me, {})).toMatchObject({
+      editor: null,
+    });
+    await expect(
+      t.mutation(internal.editors.onEditorSignIn, {
+        provider: google(ADMIN),
+        userId: editorId,
+      }),
+    ).rejects.toThrow(/can't use the editor/);
+  });
+
+  test("an identity that isn't an editor's account gets nothing", async () => {
+    const { t, projectId } = await signedIn();
+    for (const subject of ["editor", projectId, "not-an-id"])
+      await expect(
+        t
+          .withIdentity({ subject })
+          .mutation(api.editor.sync, { projectId, changes: [] }),
+      ).rejects.toThrow(/needs the editor token/);
+  });
+
+  test("the mapping photos are only for a signed-in editor", async () => {
+    const { t, projectId, asEditor } = await signedIn();
+    // Through the session machine, whose `mapper` caller is the editor role.
+    const created = await asEditor.mutation(api.mapping.start, { projectId });
+    expect(created).toMatchObject({ status: "done" });
+    const sessionId = (created as { id: Id<"mappingSessions"> }).id;
+    expect(await t.query(api.mapping.views, { sessionId })).toBeNull();
+    expect(await asEditor.query(api.mapping.views, { sessionId })).toEqual([]);
   });
 });

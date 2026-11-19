@@ -14,7 +14,6 @@ import type { PlaylistModel } from "../../../shared/models/PlaylistModel";
 import { HardwareInterfaceRuntimeModel } from "./HardwareInterfaceRuntimeModel";
 import { FlexLayoutModel } from "./FlexLayoutModel";
 import { makePersistable } from "mobx-persist-store";
-import { EditorTokenModel } from "../auth/EditorTokenModel";
 import { MappingUIModel } from "../../mapping/MappingUIModel";
 import type { ProjectSyncModel } from "./sync/ProjectSyncModel";
 import {
@@ -48,7 +47,6 @@ export class AppModel {
   projects: ProjectModel[] = [];
   hardwareInterfaceRuntime: HardwareInterfaceRuntimeModel;
   layout: FlexLayoutModel;
-  editorToken = new EditorTokenModel();
   /** Camera mapping's photo alignment (src/mapping). */
   mapping = new MappingUIModel();
   /** Saves the open project (src/common/models/sync/ProjectSyncer.tsx). */

@@ -5,7 +5,6 @@ import { Loader, Box } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import { ProjectSyncer } from "./sync/ProjectSyncer";
 import { usePersistedQuery } from "../hooks/usePersistedQuery";
-import { EditorTokenModal } from "../auth/EditorTokenModal";
 
 /** Loads the projects, and keeps the open one saved. */
 export const AppSyncer = observer(({ children }: { children: ReactNode }) => {
@@ -40,7 +39,6 @@ export const AppSyncer = observer(({ children }: { children: ReactNode }) => {
           serverDoc={projects.find((p) => p._id === app.project?._id) ?? null}
         />
       ) : null}
-      <EditorTokenModal />
       {children}
     </>
   );
