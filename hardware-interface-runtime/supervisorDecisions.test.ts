@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   backoffMs,
   decideAfterCrash,
+  checkoutFailureIsMachine,
   decideUpdate,
   gateFailureBlamesCommit,
   isDocsOnlyPath,
@@ -346,5 +347,24 @@ describe("gateFailureBlamesCommit", () => {
       "smoke boot",
     ])
       expect(gateFailureBlamesCommit(step)).toBe(true);
+  });
+});
+
+describe("checkoutFailureIsMachine", () => {
+  it("spots disk and permission problems", () => {
+    expect(
+      checkoutFailureIsMachine(
+        "fatal: could not create directory of '.git/worktrees/x': Permission denied",
+      ),
+    ).toBe(true);
+    expect(checkoutFailureIsMachine("error: No space left on device")).toBe(
+      true,
+    );
+    expect(checkoutFailureIsMachine("Read-only file system")).toBe(true);
+  });
+
+  it("leaves other checkout errors to the retry count", () => {
+    expect(checkoutFailureIsMachine("(timed out after 60s)")).toBe(false);
+    expect(checkoutFailureIsMachine("error: invalid path 'a:b'")).toBe(false);
   });
 });

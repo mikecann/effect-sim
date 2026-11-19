@@ -35,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import {
   decideAfterCrash,
   decideUpdate,
+  checkoutFailureIsMachine,
   gateFailureBlamesCommit,
   markFailed,
   parseState,
@@ -59,7 +60,9 @@ const autoUpdate = process.env.HWIR_AUTO_UPDATE === "true" && !smoke;
 const stateFile =
   process.env.HWIR_SUPERVISOR_STATE ?? join(repo, ".hwir-supervisor.json");
 const lockStampFile = join(repo, "node_modules", ".hwir-lock-stamp");
-const stagingDir = stagingDirFor(repo, process.env.HWIR_STAGING_DIR);
+const stagingDirSetting = stagingDirFor(repo, process.env.HWIR_STAGING_DIR);
+/** The setting as a real path, worked out and checked before each gate. */
+let stagingDir = stagingDirSetting;
 
 const firstCheckMs = envMs("HWIR_FIRST_CHECK_MS", 10_000);
 const checkEveryMs = envMs("HWIR_UPDATE_INTERVAL_MS", 60_000);
@@ -563,9 +566,11 @@ type GateFailure = { step: string; output: string };
 /** Checks a commit in the staging worktree. Returns why it failed, or null. */
 const runGate = async (sha: string): Promise<GateFailure | null> => {
   // Compared as real paths, so ./, .. and symlinks can't alias the repo.
+  // Everything after this uses the checked real path.
+  stagingDir = realPath(stagingDirSetting);
   const misplaced =
-    stagingDirProblem(repo, stagingDir) ??
-    stagingDirProblem(realPath(repo), realPath(stagingDir));
+    stagingDirProblem(repo, stagingDirSetting) ??
+    stagingDirProblem(realPath(repo), stagingDir);
   if (misplaced)
     return {
       step: "staging dir",
@@ -667,9 +672,13 @@ const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
     stagingDir,
     sha,
   ]);
-  return added.code === 0
-    ? null
-    : { step: "staging checkout", output: added.output };
+  if (added.code === 0) return null;
+  return {
+    step: checkoutFailureIsMachine(added.output)
+      ? "staging dir"
+      : "staging checkout",
+    output: added.output,
+  };
 };
 
 /**
@@ -677,14 +686,12 @@ const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
  * deepest part that exists is resolved and the rest added back.
  */
 const realPath = (path: string): string => {
-  const absolute = resolve(path);
   try {
-    return realpathSync(absolute);
+    // The OS resolves each symlink before the .. after it; resolve() wouldn't.
+    return realpathSync(path);
   } catch {
-    const parent = dirname(absolute);
-    return parent === absolute
-      ? absolute
-      : join(realPath(parent), basename(absolute));
+    const parent = dirname(path);
+    return parent === path ? path : join(realPath(parent), basename(path));
   }
 };
 

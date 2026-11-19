@@ -40,6 +40,15 @@ export const stagingDirProblem = (repo: string, dir: string) => {
   return null;
 };
 
+/**
+ * Whether a failed checkout's output says the machine is at fault (a folder
+ * it can't write, a full or read-only disk), not the commit.
+ */
+export const checkoutFailureIsMachine = (output: string) =>
+  /permission denied|operation not permitted|read-only file system|no space left|disk quota/i.test(
+    output,
+  );
+
 /** Checkout attempts at one commit before it's blamed on the commit. */
 export const checkoutAttemptsBeforeBlame = 3;
 
