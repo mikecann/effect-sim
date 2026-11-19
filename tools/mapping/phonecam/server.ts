@@ -7,6 +7,13 @@
 //   tailscale serve --bg --set-path /phonecam http://127.0.0.1:18731
 //
 // Then open https://<this mac>.ts.net/phonecam/ on the phone.
+//
+// Guide mode: someone walks round holding the phone while the agent on the
+// Mac looks through it and tells them where to go. POST /say shows the words
+// big on the phone and reads them out; the phone's quick replies and typed
+// (or dictated) answers come back from GET /replies. Both only answer the Mac
+// itself, not requests through Tailscale. tools/mapping/phonecam/guide.ts
+// wraps them.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -31,6 +38,15 @@ const pendingCommands = new Map<number, (r: PhoneInfo) => void>();
 
 // A 4032x3024 JPEG at quality 0.95 is about 3-8 MB.
 const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+
+// Guide mode: the latest instruction, and what the person holding the phone
+// sent back.
+type Said = { id: number; text: string; at: number };
+let said: Said | null = null;
+const replies: Said[] = [];
+let nextReplyId = 1;
+const replyWaiters = new Set<() => void>();
+const MAX_TEXT = 500;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -102,6 +118,32 @@ Bun.serve({
           },
         });
       if (r === "status") return json({ connected: !!phone, ...info });
+      if (r === "say" || r === "replies") {
+        // From the Mac only: tailscale serve marks the requests it forwards.
+        if (req.headers.has("tailscale-user-login"))
+          return json({ ok: false, error: "Only from the Mac" }, 403);
+        if (r === "say" && req.method === "POST") {
+          const body = (await req.json().catch(() => ({}))) as { text?: unknown };
+          const text = String(body.text ?? "").trim().slice(0, MAX_TEXT);
+          if (!text) return json({ ok: false, error: "Nothing to say" }, 400);
+          said = { id: (said?.id ?? 0) + 1, text, at: Date.now() };
+          phone?.send(JSON.stringify({ type: "say", ...said }));
+          return json({ ok: true, delivered: !!phone, id: said.id });
+        }
+        if (r === "replies") {
+          // Long poll: replies after `after`, waiting up to `wait` seconds for one.
+          const after = Number(url.searchParams.get("after") ?? 0);
+          const waitMs = Math.min(Number(url.searchParams.get("wait") ?? 0), 600) * 1000;
+          const newer = () => replies.filter((m) => m.id > after);
+          if (newer().length === 0 && waitMs > 0)
+            await new Promise<void>((resolve) => {
+              const done = () => { replyWaiters.delete(done); clearTimeout(timer); resolve(); };
+              const timer = setTimeout(done, waitMs);
+              replyWaiters.add(done);
+            });
+          return json({ connected: !!phone, replies: newer() });
+        }
+      }
       if (r === "upload" && req.method === "POST") {
         // Only a photo the capture asked for, and only photo-sized: anything
         // else is refused before its body is read.
@@ -138,6 +180,7 @@ Bun.serve({
       if (phone && phone !== ws) phone.close(4000, "Another phone connected");
       phone = ws;
       console.log("phone connected");
+      if (said) ws.send(JSON.stringify({ type: "say", ...said }));
     },
     message(ws, raw) {
       const msg = JSON.parse(String(raw)) as PhoneInfo & {
@@ -150,6 +193,13 @@ Bun.serve({
       } else if (msg.type === "result" && msg.id !== undefined) {
         pendingCommands.get(msg.id)?.(msg);
         pendingCommands.delete(msg.id);
+      } else if (msg.type === "reply") {
+        const text = String(msg.text ?? "").trim().slice(0, MAX_TEXT);
+        if (!text) return;
+        replies.push({ id: nextReplyId++, text, at: Date.now() });
+        if (replies.length > 200) replies.shift();
+        console.log("reply:", text);
+        for (const wake of [...replyWaiters]) wake();
       } else if (msg.type === "snapError" && msg.id !== undefined) {
         pendingSnaps.get(msg.id)?.reject(new Error(String(msg.error)));
         pendingSnaps.delete(msg.id);
