@@ -25,11 +25,12 @@ import {
   existsSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   decideAfterCrash,
@@ -561,7 +562,10 @@ type GateFailure = { step: string; output: string };
 
 /** Checks a commit in the staging worktree. Returns why it failed, or null. */
 const runGate = async (sha: string): Promise<GateFailure | null> => {
-  const misplaced = stagingDirProblem(repo, stagingDir);
+  // Compared as real paths, so ./, .. and symlinks can't alias the repo.
+  const misplaced =
+    stagingDirProblem(repo, stagingDir) ??
+    stagingDirProblem(realPath(repo), realPath(stagingDir));
   if (misplaced)
     return {
       step: "staging dir",
@@ -666,6 +670,22 @@ const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
   return added.code === 0
     ? null
     : { step: "staging checkout", output: added.output };
+};
+
+/**
+ * The path with symlinks resolved, for one that may not exist yet: the
+ * deepest part that exists is resolved and the rest added back.
+ */
+const realPath = (path: string): string => {
+  const absolute = resolve(path);
+  try {
+    return realpathSync(absolute);
+  } catch {
+    const parent = dirname(absolute);
+    return parent === absolute
+      ? absolute
+      : join(realPath(parent), basename(absolute));
+  }
 };
 
 /**
