@@ -45,7 +45,7 @@ export const stagingDirProblem = (repo: string, dir: string) => {
  * it can't write, a full or read-only disk), not the commit.
  */
 export const checkoutFailureIsMachine = (output: string) =>
-  /permission denied|operation not permitted|read-only file system|no space left|disk quota/i.test(
+  /permission denied|operation not permitted|read-only file system|no space left|disk quota|input\/output error/i.test(
     output,
   );
 

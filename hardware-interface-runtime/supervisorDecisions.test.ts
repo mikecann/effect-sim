@@ -361,6 +361,7 @@ describe("checkoutFailureIsMachine", () => {
       true,
     );
     expect(checkoutFailureIsMachine("Read-only file system")).toBe(true);
+    expect(checkoutFailureIsMachine("error: Input/output error")).toBe(true);
   });
 
   it("leaves other checkout errors to the retry count", () => {
