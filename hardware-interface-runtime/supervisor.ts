@@ -687,8 +687,9 @@ const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
  */
 const realPath = (path: string): string => {
   try {
-    // The OS resolves each symlink before the .. after it; resolve() wouldn't.
-    return realpathSync(path);
+    // The OS's realpath resolves each symlink before the .. after it; the
+    // JS one (and resolve()) drop the .. first.
+    return realpathSync.native(path);
   } catch {
     const parent = dirname(path);
     return parent === path ? path : join(realPath(parent), basename(path));
