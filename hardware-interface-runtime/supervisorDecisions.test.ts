@@ -3,9 +3,11 @@ import {
   backoffMs,
   decideAfterCrash,
   decideUpdate,
+  gateFailureBlamesCommit,
   isDocsOnlyPath,
   markFailed,
   parseState,
+  stagingDirFor,
   type RepoFacts,
 } from "./supervisorDecisions";
 
@@ -288,5 +290,38 @@ describe("backoffMs", () => {
     expect([1, 2, 3, 4, 5, 6, 7, 20].map(backoffMs)).toEqual([
       1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000,
     ]);
+  });
+});
+
+describe("stagingDirFor", () => {
+  it("puts staging next to the repo by default", () => {
+    expect(stagingDirFor("/Users/x/dev/code/effect-sim")).toBe(
+      "/Users/x/dev/code/effect-sim-staging",
+    );
+    expect(stagingDirFor("/Users/x/dev/code/effect-sim/")).toBe(
+      "/Users/x/dev/code/effect-sim-staging",
+    );
+  });
+
+  it("uses HWIR_STAGING_DIR when it's set", () => {
+    expect(stagingDirFor("/r", "/elsewhere/stage")).toBe("/elsewhere/stage");
+    expect(stagingDirFor("/r", "  ")).toBe("/r-staging");
+  });
+});
+
+describe("gateFailureBlamesCommit", () => {
+  it("doesn't blame the commit for the machine's staging problems", () => {
+    expect(gateFailureBlamesCommit("staging dir")).toBe(false);
+    expect(gateFailureBlamesCommit("staging checkout")).toBe(false);
+  });
+
+  it("blames the commit for its own checks", () => {
+    for (const step of [
+      "entry point check",
+      "install",
+      "typecheck",
+      "smoke boot",
+    ])
+      expect(gateFailureBlamesCommit(step)).toBe(true);
   });
 });

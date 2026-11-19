@@ -13,6 +13,23 @@ export type SupervisorState = {
   failed: Record<string, string>;
 };
 
+/**
+ * Where commits are checked: HWIR_STAGING_DIR, else next to the repo
+ * (`<repo>-staging`). Never an external disk: launchd's daemon can't reach
+ * removable volumes, and on 18 Nov `git worktree add` into
+ * /Volumes/TinkerSSD hung until it timed out.
+ */
+export const stagingDirFor = (repo: string, override?: string) =>
+  override?.trim() ? override.trim() : `${repo.replace(/\/+$/, "")}-staging`;
+
+/**
+ * Whether a failed gate step says something about the commit. A staging dir
+ * that can't be written or checked out into is the machine's problem, so the
+ * commit is tried again next time instead of being marked failed forever.
+ */
+export const gateFailureBlamesCommit = (step: string) =>
+  step !== "staging dir" && step !== "staging checkout";
+
 export const emptyState = (): SupervisorState => ({ failed: {} });
 
 /** Reads the state file's contents, treating anything unexpected as empty. */

@@ -28,15 +28,17 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   decideAfterCrash,
   decideUpdate,
+  gateFailureBlamesCommit,
   markFailed,
   parseState,
   recentCrashes,
   type RepoFacts,
+  stagingDirFor,
   type SupervisorState,
 } from "./supervisorDecisions";
 
@@ -54,12 +56,7 @@ const autoUpdate = process.env.HWIR_AUTO_UPDATE === "true" && !smoke;
 const stateFile =
   process.env.HWIR_SUPERVISOR_STATE ?? join(repo, ".hwir-supervisor.json");
 const lockStampFile = join(repo, "node_modules", ".hwir-lock-stamp");
-// Tinker Desk's own disk is small, so staging goes on its SSD when it's there.
-const stagingDir =
-  process.env.HWIR_STAGING_DIR ??
-  (existsSync("/Volumes/TinkerSSD")
-    ? "/Volumes/TinkerSSD/effect-sim-staging"
-    : join(dirname(repo), `${basename(repo)}-staging`));
+const stagingDir = stagingDirFor(repo, process.env.HWIR_STAGING_DIR);
 
 const firstCheckMs = envMs("HWIR_FIRST_CHECK_MS", 10_000);
 const checkEveryMs = envMs("HWIR_UPDATE_INTERVAL_MS", 60_000);
@@ -78,6 +75,8 @@ const log = (message: string) =>
 
 // The update check runs every minute, so it only logs when its answer changes.
 let lastRepeatable = "";
+/** A commit whose last check failed because of the machine, not the commit. */
+let machineBlocked: string | undefined;
 const logIfChanged = (message: string) => {
   if (message === lastRepeatable) return;
   lastRepeatable = message;
@@ -475,7 +474,11 @@ const checkForUpdate = async ({ rehearse = false } = {}) => {
     return;
   }
 
-  lastRepeatable = "";
+  // A commit the machine couldn't check last time is retried every check;
+  // say so once, not every minute.
+  const retrying = machineBlocked === action.sha;
+  if (!retrying) lastRepeatable = "";
+  machineBlocked = undefined;
   if (action.kind === "fast-forward") {
     const merged = await run(git, ["merge", "--ff-only", action.sha]);
     if (merged.code !== 0) {
@@ -491,11 +494,18 @@ const checkForUpdate = async ({ rehearse = false } = {}) => {
     return;
   }
 
-  log(action.why);
+  if (!retrying) log(action.why);
   gateInterrupted = false;
   const failure = await runGate(action.sha);
   // A rollback or shutdown killed the check: that says nothing about the commit.
   if (shuttingDown || gateInterrupted) return;
+  if (failure && !gateFailureBlamesCommit(failure.step)) {
+    machineBlocked = action.sha;
+    logIfChanged(
+      `couldn't check ${short(action.sha)} (${failure.step}), staying on ${short(repoFacts.head)} and trying again next check:\n${tail(failure.output)}`,
+    );
+    return;
+  }
   if (failure) {
     saveState(markFailed(state, action.sha, failure.step));
     log(
@@ -538,6 +548,8 @@ type GateFailure = { step: string; output: string };
 
 /** Checks a commit in the staging worktree. Returns why it failed, or null. */
 const runGate = async (sha: string): Promise<GateFailure | null> => {
+  const unwritable = await probeStagingDir();
+  if (unwritable) return { step: "staging dir", output: unwritable };
   const checkout = await prepareStaging(sha);
   if (checkout) return { step: "staging checkout", output: checkout };
 
@@ -578,6 +590,22 @@ const runGate = async (sha: string): Promise<GateFailure | null> => {
     log(`  ${short(sha)} ${step}: ok (${secs}s)`);
   }
   return null;
+};
+
+/**
+ * Checks the staging dir can be written, in a child process with a short
+ * timeout, so a disk the daemon can't reach fails in seconds with a clear
+ * message instead of hanging a checkout. Returns an error message, or null.
+ */
+const probeStagingDir = async (): Promise<string | null> => {
+  const probe = join(stagingDir, ".hwir-write-probe");
+  const result = await run(
+    "/bin/sh",
+    ["-c", 'mkdir -p "$1" && : > "$2" && rm -f "$2"', "sh", stagingDir, probe],
+    { timeoutMs: 15_000 },
+  );
+  if (result.code === 0) return null;
+  return `can't write to ${stagingDir} (${tail(result.output, 2) || `exit ${result.code}`}). Set HWIR_STAGING_DIR in .env.local to a folder on the internal disk.`;
 };
 
 /** Puts the staging worktree on sha. Returns an error message, or null. */
