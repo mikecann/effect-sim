@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   backoffMs,
   decideAfterCrash,
+  checkoutFailureIsMachine,
   decideUpdate,
+  gateFailureBlamesCommit,
   isDocsOnlyPath,
   markFailed,
   parseState,
+  stagingDirFor,
+  stagingDirProblem,
   type RepoFacts,
 } from "./supervisorDecisions";
 
@@ -288,5 +292,80 @@ describe("backoffMs", () => {
     expect([1, 2, 3, 4, 5, 6, 7, 20].map(backoffMs)).toEqual([
       1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000,
     ]);
+  });
+});
+
+describe("stagingDirFor", () => {
+  it("puts staging next to the repo by default", () => {
+    expect(stagingDirFor("/Users/x/dev/code/effect-sim")).toBe(
+      "/Users/x/dev/code/effect-sim-staging",
+    );
+    expect(stagingDirFor("/Users/x/dev/code/effect-sim/")).toBe(
+      "/Users/x/dev/code/effect-sim-staging",
+    );
+  });
+
+  it("uses HWIR_STAGING_DIR when it's set", () => {
+    expect(stagingDirFor("/r", "/elsewhere/stage")).toBe("/elsewhere/stage");
+    expect(stagingDirFor("/r", "  ")).toBe("/r-staging");
+  });
+});
+
+describe("stagingDirProblem", () => {
+  const repo = "/Users/x/dev/code/effect-sim";
+  it("accepts a folder of its own", () => {
+    expect(stagingDirProblem(repo, `${repo}-staging`)).toBeNull();
+    expect(stagingDirProblem(repo, "/Users/x/stage")).toBeNull();
+  });
+
+  it("refuses the repo, anything holding it, anything in it, and relative paths", () => {
+    expect(stagingDirProblem(repo, repo)).toMatch(/is the live repo/);
+    expect(stagingDirProblem(repo, `${repo}/`)).toMatch(/is the live repo/);
+    expect(stagingDirProblem(repo, "/Users/x")).toMatch(/contains/);
+    expect(stagingDirProblem(repo, "/")).toMatch(/contains/);
+    expect(stagingDirProblem(repo, `${repo}/staging`)).toMatch(/inside/);
+    expect(stagingDirProblem(repo, "staging")).toMatch(/absolute/);
+  });
+});
+
+describe("gateFailureBlamesCommit", () => {
+  it("never blames the commit for an unusable staging dir", () => {
+    expect(gateFailureBlamesCommit("staging dir", 99)).toBe(false);
+  });
+
+  it("blames a checkout only after it keeps failing", () => {
+    expect(gateFailureBlamesCommit("staging checkout", 1)).toBe(false);
+    expect(gateFailureBlamesCommit("staging checkout", 2)).toBe(false);
+    expect(gateFailureBlamesCommit("staging checkout", 3)).toBe(true);
+  });
+
+  it("blames the commit for its own checks", () => {
+    for (const step of [
+      "entry point check",
+      "install",
+      "typecheck",
+      "smoke boot",
+    ])
+      expect(gateFailureBlamesCommit(step)).toBe(true);
+  });
+});
+
+describe("checkoutFailureIsMachine", () => {
+  it("spots disk and permission problems", () => {
+    expect(
+      checkoutFailureIsMachine(
+        "fatal: could not create directory of '.git/worktrees/x': Permission denied",
+      ),
+    ).toBe(true);
+    expect(checkoutFailureIsMachine("error: No space left on device")).toBe(
+      true,
+    );
+    expect(checkoutFailureIsMachine("Read-only file system")).toBe(true);
+    expect(checkoutFailureIsMachine("error: Input/output error")).toBe(true);
+  });
+
+  it("leaves other checkout errors to the retry count", () => {
+    expect(checkoutFailureIsMachine("(timed out after 60s)")).toBe(false);
+    expect(checkoutFailureIsMachine("error: invalid path 'a:b'")).toBe(false);
   });
 });

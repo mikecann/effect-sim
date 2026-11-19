@@ -13,6 +13,58 @@ export type SupervisorState = {
   failed: Record<string, string>;
 };
 
+/**
+ * Where commits are checked: HWIR_STAGING_DIR, else next to the repo
+ * (`<repo>-staging`). Never an external disk: launchd's daemon can't reach
+ * removable volumes, and on 18 Nov `git worktree add` into
+ * /Volumes/TinkerSSD hung until it timed out.
+ */
+export const stagingDirFor = (repo: string, override?: string) =>
+  override?.trim() ? override.trim() : `${repo.replace(/\/+$/, "")}-staging`;
+
+const trimSlashes = (path: string) => path.replace(/\/+$/, "") || "/";
+
+/**
+ * Why a staging dir can't be used, or null. It's emptied and checked out
+ * into, so it must be absolute and must not be, contain or sit inside the
+ * live repo (HWIR_STAGING_DIR=$HOME would otherwise delete the repo).
+ */
+export const stagingDirProblem = (repo: string, dir: string) => {
+  const r = trimSlashes(repo);
+  const d = trimSlashes(dir);
+  if (!d.startsWith("/")) return `${dir} isn't an absolute path`;
+  if (d === r) return `${dir} is the live repo`;
+  if (r.startsWith(d === "/" ? "/" : `${d}/`))
+    return `${dir} contains the live repo`;
+  if (d.startsWith(`${r}/`)) return `${dir} is inside the live repo`;
+  return null;
+};
+
+/**
+ * Whether a failed checkout's output says the machine is at fault (a folder
+ * it can't write, a full or read-only disk), not the commit.
+ */
+export const checkoutFailureIsMachine = (output: string) =>
+  /permission denied|operation not permitted|read-only file system|no space left|disk quota|input\/output error/i.test(
+    output,
+  );
+
+/** Checkout attempts at one commit before it's blamed on the commit. */
+export const checkoutAttemptsBeforeBlame = 3;
+
+/**
+ * Whether a failed gate step says something about the commit. A staging dir
+ * that can't be used is the machine's problem, so the commit is tried again
+ * next time instead of being marked failed forever. A checkout that keeps
+ * failing with a usable dir is the commit's, after a few tries.
+ */
+export const gateFailureBlamesCommit = (step: string, checkoutAttempts = 1) =>
+  step === "staging dir"
+    ? false
+    : step === "staging checkout"
+      ? checkoutAttempts >= checkoutAttemptsBeforeBlame
+      : true;
+
 export const emptyState = (): SupervisorState => ({ failed: {} });
 
 /** Reads the state file's contents, treating anything unexpected as empty. */

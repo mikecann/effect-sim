@@ -23,7 +23,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -33,10 +35,14 @@ import { fileURLToPath } from "node:url";
 import {
   decideAfterCrash,
   decideUpdate,
+  checkoutFailureIsMachine,
+  gateFailureBlamesCommit,
   markFailed,
   parseState,
   recentCrashes,
   type RepoFacts,
+  stagingDirFor,
+  stagingDirProblem,
   type SupervisorState,
 } from "./supervisorDecisions";
 
@@ -54,12 +60,9 @@ const autoUpdate = process.env.HWIR_AUTO_UPDATE === "true" && !smoke;
 const stateFile =
   process.env.HWIR_SUPERVISOR_STATE ?? join(repo, ".hwir-supervisor.json");
 const lockStampFile = join(repo, "node_modules", ".hwir-lock-stamp");
-// Tinker Desk's own disk is small, so staging goes on its SSD when it's there.
-const stagingDir =
-  process.env.HWIR_STAGING_DIR ??
-  (existsSync("/Volumes/TinkerSSD")
-    ? "/Volumes/TinkerSSD/effect-sim-staging"
-    : join(dirname(repo), `${basename(repo)}-staging`));
+const stagingDirSetting = stagingDirFor(repo, process.env.HWIR_STAGING_DIR);
+/** The setting as a real path, worked out and checked before each gate. */
+let stagingDir = stagingDirSetting;
 
 const firstCheckMs = envMs("HWIR_FIRST_CHECK_MS", 10_000);
 const checkEveryMs = envMs("HWIR_UPDATE_INTERVAL_MS", 60_000);
@@ -78,6 +81,10 @@ const log = (message: string) =>
 
 // The update check runs every minute, so it only logs when its answer changes.
 let lastRepeatable = "";
+/** A commit whose last check failed because of the machine, not the commit. */
+let machineBlocked: string | undefined;
+/** Failed checkouts in a row, for the commit being checked. */
+let checkoutFailures = { sha: "", count: 0 };
 const logIfChanged = (message: string) => {
   if (message === lastRepeatable) return;
   lastRepeatable = message;
@@ -475,7 +482,11 @@ const checkForUpdate = async ({ rehearse = false } = {}) => {
     return;
   }
 
-  lastRepeatable = "";
+  // A commit the machine couldn't check last time is retried every check;
+  // say so once, not every minute.
+  const retrying = machineBlocked === action.sha;
+  if (!retrying) lastRepeatable = "";
+  machineBlocked = undefined;
   if (action.kind === "fast-forward") {
     const merged = await run(git, ["merge", "--ff-only", action.sha]);
     if (merged.code !== 0) {
@@ -491,11 +502,27 @@ const checkForUpdate = async ({ rehearse = false } = {}) => {
     return;
   }
 
-  log(action.why);
+  if (!retrying) log(action.why);
   gateInterrupted = false;
   const failure = await runGate(action.sha);
   // A rollback or shutdown killed the check: that says nothing about the commit.
   if (shuttingDown || gateInterrupted) return;
+  if (failure?.step === "staging checkout")
+    checkoutFailures = {
+      sha: action.sha,
+      count:
+        checkoutFailures.sha === action.sha ? checkoutFailures.count + 1 : 1,
+    };
+  if (
+    failure &&
+    !gateFailureBlamesCommit(failure.step, checkoutFailures.count)
+  ) {
+    machineBlocked = action.sha;
+    logIfChanged(
+      `couldn't check ${short(action.sha)} (${failure.step}), staying on ${short(repoFacts.head)} and trying again next check:\n${tail(failure.output)}`,
+    );
+    return;
+  }
   if (failure) {
     saveState(markFailed(state, action.sha, failure.step));
     log(
@@ -538,8 +565,21 @@ type GateFailure = { step: string; output: string };
 
 /** Checks a commit in the staging worktree. Returns why it failed, or null. */
 const runGate = async (sha: string): Promise<GateFailure | null> => {
+  // Compared as real paths, so ./, .. and symlinks can't alias the repo.
+  // Everything after this uses the checked real path.
+  stagingDir = realPath(stagingDirSetting);
+  const misplaced =
+    stagingDirProblem(repo, stagingDirSetting) ??
+    stagingDirProblem(realPath(repo), stagingDir);
+  if (misplaced)
+    return {
+      step: "staging dir",
+      output: `${misplaced}. Set HWIR_STAGING_DIR in .env.local to a folder of its own on the internal disk.`,
+    };
+  const unwritable = await probeStagingDir();
+  if (unwritable) return { step: "staging dir", output: unwritable };
   const checkout = await prepareStaging(sha);
-  if (checkout) return { step: "staging checkout", output: checkout };
+  if (checkout) return checkout;
 
   // launchd always runs `bun run hwir`, so a commit that changes what that
   // script runs can't be proven here. It needs a person on the machine.
@@ -580,8 +620,30 @@ const runGate = async (sha: string): Promise<GateFailure | null> => {
   return null;
 };
 
-/** Puts the staging worktree on sha. Returns an error message, or null. */
-const prepareStaging = async (sha: string): Promise<string | null> => {
+/**
+ * Checks the staging dir can be written, in a child process with a short
+ * timeout, so a disk the daemon can't reach fails in seconds with a clear
+ * message instead of hanging a checkout. Returns an error message, or null.
+ */
+const probeStagingDir = async (): Promise<string | null> => {
+  // mktemp creates a new file of its own, so it can't follow a planted
+  // symlink or trip over something already there.
+  const result = await run(
+    "/bin/sh",
+    [
+      "-c",
+      'mkdir -p "$1" && f=$(mktemp "$1/.hwir-write-probe.XXXXXX") && rm -f "$f"',
+      "sh",
+      stagingDir,
+    ],
+    { timeoutMs: 15_000 },
+  );
+  if (result.code === 0) return null;
+  return `can't write to ${stagingDir} (${tail(result.output, 2) || `exit ${result.code}`}). Set HWIR_STAGING_DIR in .env.local to a folder on the internal disk.`;
+};
+
+/** Puts the staging worktree on sha. Returns why it couldn't, or null. */
+const prepareStaging = async (sha: string): Promise<GateFailure | null> => {
   if (await isOurWorktree(stagingDir)) {
     const checkout = await run(git, ["checkout", "--detach", "--force", sha], {
       cwd: stagingDir,
@@ -595,6 +657,11 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
       `staging worktree is broken, recreating it: ${tail(checkout.output, 3)}`,
     );
   }
+  if (!isOursToReplace(stagingDir))
+    return {
+      step: "staging dir",
+      output: `${stagingDir} has something in it that isn't this repo's staging worktree, so it's left alone. Empty it, or set HWIR_STAGING_DIR to a folder of its own.`,
+    };
   rmSync(stagingDir, { recursive: true, force: true });
   await run(git, ["worktree", "prune"]);
   const added = await run(git, [
@@ -605,7 +672,48 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
     stagingDir,
     sha,
   ]);
-  return added.code === 0 ? null : added.output;
+  if (added.code === 0) return null;
+  return {
+    step: checkoutFailureIsMachine(added.output)
+      ? "staging dir"
+      : "staging checkout",
+    output: added.output,
+  };
+};
+
+/**
+ * The path with symlinks resolved, for one that may not exist yet: the
+ * deepest part that exists is resolved and the rest added back.
+ */
+const realPath = (path: string): string => {
+  try {
+    // The OS's realpath resolves each symlink before the .. after it; the
+    // JS one (and resolve()) drop the .. first.
+    return realpathSync.native(path);
+  } catch {
+    const parent = dirname(path);
+    return parent === path ? path : join(realPath(parent), basename(path));
+  }
+};
+
+/**
+ * Whether the staging dir may be deleted and recreated: it's missing, empty,
+ * or a (maybe broken) worktree whose .git file points into this repo. Never
+ * a folder someone pointed HWIR_STAGING_DIR at by mistake.
+ */
+const isOursToReplace = (dir: string) => {
+  try {
+    if (!existsSync(dir)) return true;
+    if (readdirSync(dir).length === 0) return true;
+    const gitFile = readFileSync(join(dir, ".git"), "utf8");
+    const gitdir = /^gitdir: (.+)$/m.exec(gitFile)?.[1]?.trim();
+    return (
+      gitdir !== undefined &&
+      resolve(dir, gitdir).startsWith(`${join(repo, ".git", "worktrees")}/`)
+    );
+  } catch {
+    return false;
+  }
 };
 
 /** A worktree of this repo (not some other checkout's staging dir). */
