@@ -22,13 +22,39 @@ export type SupervisorState = {
 export const stagingDirFor = (repo: string, override?: string) =>
   override?.trim() ? override.trim() : `${repo.replace(/\/+$/, "")}-staging`;
 
+const trimSlashes = (path: string) => path.replace(/\/+$/, "") || "/";
+
+/**
+ * Why a staging dir can't be used, or null. It's emptied and checked out
+ * into, so it must be absolute and must not be, contain or sit inside the
+ * live repo (HWIR_STAGING_DIR=$HOME would otherwise delete the repo).
+ */
+export const stagingDirProblem = (repo: string, dir: string) => {
+  const r = trimSlashes(repo);
+  const d = trimSlashes(dir);
+  if (!d.startsWith("/")) return `${dir} isn't an absolute path`;
+  if (d === r) return `${dir} is the live repo`;
+  if (r.startsWith(d === "/" ? "/" : `${d}/`))
+    return `${dir} contains the live repo`;
+  if (d.startsWith(`${r}/`)) return `${dir} is inside the live repo`;
+  return null;
+};
+
+/** Checkout attempts at one commit before it's blamed on the commit. */
+export const checkoutAttemptsBeforeBlame = 3;
+
 /**
  * Whether a failed gate step says something about the commit. A staging dir
- * that can't be written or checked out into is the machine's problem, so the
- * commit is tried again next time instead of being marked failed forever.
+ * that can't be used is the machine's problem, so the commit is tried again
+ * next time instead of being marked failed forever. A checkout that keeps
+ * failing with a usable dir is the commit's, after a few tries.
  */
-export const gateFailureBlamesCommit = (step: string) =>
-  step !== "staging dir" && step !== "staging checkout";
+export const gateFailureBlamesCommit = (step: string, checkoutAttempts = 1) =>
+  step === "staging dir"
+    ? false
+    : step === "staging checkout"
+      ? checkoutAttempts >= checkoutAttemptsBeforeBlame
+      : true;
 
 export const emptyState = (): SupervisorState => ({ failed: {} });
 

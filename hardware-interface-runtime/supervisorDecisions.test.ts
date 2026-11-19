@@ -8,6 +8,7 @@ import {
   markFailed,
   parseState,
   stagingDirFor,
+  stagingDirProblem,
   type RepoFacts,
 } from "./supervisorDecisions";
 
@@ -309,10 +310,32 @@ describe("stagingDirFor", () => {
   });
 });
 
+describe("stagingDirProblem", () => {
+  const repo = "/Users/x/dev/code/effect-sim";
+  it("accepts a folder of its own", () => {
+    expect(stagingDirProblem(repo, `${repo}-staging`)).toBeNull();
+    expect(stagingDirProblem(repo, "/Users/x/stage")).toBeNull();
+  });
+
+  it("refuses the repo, anything holding it, anything in it, and relative paths", () => {
+    expect(stagingDirProblem(repo, repo)).toMatch(/is the live repo/);
+    expect(stagingDirProblem(repo, `${repo}/`)).toMatch(/is the live repo/);
+    expect(stagingDirProblem(repo, "/Users/x")).toMatch(/contains/);
+    expect(stagingDirProblem(repo, "/")).toMatch(/contains/);
+    expect(stagingDirProblem(repo, `${repo}/staging`)).toMatch(/inside/);
+    expect(stagingDirProblem(repo, "staging")).toMatch(/absolute/);
+  });
+});
+
 describe("gateFailureBlamesCommit", () => {
-  it("doesn't blame the commit for the machine's staging problems", () => {
-    expect(gateFailureBlamesCommit("staging dir")).toBe(false);
-    expect(gateFailureBlamesCommit("staging checkout")).toBe(false);
+  it("never blames the commit for an unusable staging dir", () => {
+    expect(gateFailureBlamesCommit("staging dir", 99)).toBe(false);
+  });
+
+  it("blames a checkout only after it keeps failing", () => {
+    expect(gateFailureBlamesCommit("staging checkout", 1)).toBe(false);
+    expect(gateFailureBlamesCommit("staging checkout", 2)).toBe(false);
+    expect(gateFailureBlamesCommit("staging checkout", 3)).toBe(true);
   });
 
   it("blames the commit for its own checks", () => {

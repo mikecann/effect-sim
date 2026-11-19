@@ -23,6 +23,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -39,6 +40,7 @@ import {
   recentCrashes,
   type RepoFacts,
   stagingDirFor,
+  stagingDirProblem,
   type SupervisorState,
 } from "./supervisorDecisions";
 
@@ -77,6 +79,8 @@ const log = (message: string) =>
 let lastRepeatable = "";
 /** A commit whose last check failed because of the machine, not the commit. */
 let machineBlocked: string | undefined;
+/** Failed checkouts in a row, for the commit being checked. */
+let checkoutFailures = { sha: "", count: 0 };
 const logIfChanged = (message: string) => {
   if (message === lastRepeatable) return;
   lastRepeatable = message;
@@ -499,7 +503,16 @@ const checkForUpdate = async ({ rehearse = false } = {}) => {
   const failure = await runGate(action.sha);
   // A rollback or shutdown killed the check: that says nothing about the commit.
   if (shuttingDown || gateInterrupted) return;
-  if (failure && !gateFailureBlamesCommit(failure.step)) {
+  if (failure?.step === "staging checkout")
+    checkoutFailures = {
+      sha: action.sha,
+      count:
+        checkoutFailures.sha === action.sha ? checkoutFailures.count + 1 : 1,
+    };
+  if (
+    failure &&
+    !gateFailureBlamesCommit(failure.step, checkoutFailures.count)
+  ) {
     machineBlocked = action.sha;
     logIfChanged(
       `couldn't check ${short(action.sha)} (${failure.step}), staying on ${short(repoFacts.head)} and trying again next check:\n${tail(failure.output)}`,
@@ -548,6 +561,12 @@ type GateFailure = { step: string; output: string };
 
 /** Checks a commit in the staging worktree. Returns why it failed, or null. */
 const runGate = async (sha: string): Promise<GateFailure | null> => {
+  const misplaced = stagingDirProblem(repo, stagingDir);
+  if (misplaced)
+    return {
+      step: "staging dir",
+      output: `${misplaced}. Set HWIR_STAGING_DIR in .env.local to a folder of its own on the internal disk.`,
+    };
   const unwritable = await probeStagingDir();
   if (unwritable) return { step: "staging dir", output: unwritable };
   const checkout = await prepareStaging(sha);
@@ -598,10 +617,16 @@ const runGate = async (sha: string): Promise<GateFailure | null> => {
  * message instead of hanging a checkout. Returns an error message, or null.
  */
 const probeStagingDir = async (): Promise<string | null> => {
-  const probe = join(stagingDir, ".hwir-write-probe");
+  // mktemp creates a new file of its own, so it can't follow a planted
+  // symlink or trip over something already there.
   const result = await run(
     "/bin/sh",
-    ["-c", 'mkdir -p "$1" && : > "$2" && rm -f "$2"', "sh", stagingDir, probe],
+    [
+      "-c",
+      'mkdir -p "$1" && f=$(mktemp "$1/.hwir-write-probe.XXXXXX") && rm -f "$f"',
+      "sh",
+      stagingDir,
+    ],
     { timeoutMs: 15_000 },
   );
   if (result.code === 0) return null;
@@ -623,6 +648,8 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
       `staging worktree is broken, recreating it: ${tail(checkout.output, 3)}`,
     );
   }
+  if (!isOursToReplace(stagingDir))
+    return `${stagingDir} has something in it that isn't this repo's staging worktree, so it's left alone. Empty it, or set HWIR_STAGING_DIR to a folder of its own.`;
   rmSync(stagingDir, { recursive: true, force: true });
   await run(git, ["worktree", "prune"]);
   const added = await run(git, [
@@ -634,6 +661,26 @@ const prepareStaging = async (sha: string): Promise<string | null> => {
     sha,
   ]);
   return added.code === 0 ? null : added.output;
+};
+
+/**
+ * Whether the staging dir may be deleted and recreated: it's missing, empty,
+ * or a (maybe broken) worktree whose .git file points into this repo. Never
+ * a folder someone pointed HWIR_STAGING_DIR at by mistake.
+ */
+const isOursToReplace = (dir: string) => {
+  try {
+    if (!existsSync(dir)) return true;
+    if (readdirSync(dir).length === 0) return true;
+    const gitFile = readFileSync(join(dir, ".git"), "utf8");
+    const gitdir = /^gitdir: (.+)$/m.exec(gitFile)?.[1]?.trim();
+    return (
+      gitdir !== undefined &&
+      resolve(dir, gitdir).startsWith(`${join(repo, ".git", "worktrees")}/`)
+    );
+  } catch {
+    return false;
+  }
 };
 
 /** A worktree of this repo (not some other checkout's staging dir). */
