@@ -1,7 +1,7 @@
+import { useMutation } from "convex/react";
 import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { api } from "../../convex/_generated/api";
 import { useApp } from "../common/AppContext";
-import { useEditorMutation } from "../common/auth/useEditorMutation";
 import { confidenceColors } from "./confidence";
 import { useLatestSession, useViews } from "./useMappingData";
 import { useRunner } from "./useRunner";
@@ -47,11 +47,11 @@ export default function MappingPanel() {
   const session = useLatestSession();
   const views = useViews(session?.id ?? null);
   const runner = useRunner();
-  const start = useEditorMutation(api.mapping.start);
-  const discard = useEditorMutation(api.mapping.discard);
-  const realign = useEditorMutation(api.mapping.realign);
-  const apply = useEditorMutation(api.mapping.apply);
-  const rollback = useEditorMutation(api.mapping.rollback);
+  const start = useMutation(api.mapping.start);
+  const discard = useMutation(api.mapping.discard);
+  const realign = useMutation(api.mapping.realign);
+  const apply = useMutation(api.mapping.apply);
+  const rollback = useMutation(api.mapping.rollback);
 
   if (!projectId) return null;
   if (session === undefined)

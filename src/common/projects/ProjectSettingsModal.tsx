@@ -1,11 +1,18 @@
-import { Modal, Stack, NumberInput, TextInput, Group, Button } from "@mantine/core";
+import { useMutation } from "convex/react";
+import {
+  Modal,
+  Stack,
+  NumberInput,
+  TextInput,
+  Group,
+  Button,
+} from "@mantine/core";
 import { useApp } from "../AppContext";
 import { DEFAULT_FRAMERATE } from "./projectConstants";
 import { useAdaptiveStep } from "../hooks/useAdaptiveStep";
 import { useConfirmation } from "../confirmation/ConfirmationProvider";
 import { useState } from "react";
 import { api } from "../../../convex/_generated/api";
-import { useEditorMutation } from "../auth/useEditorMutation";
 import { useApiErrorHandler } from "../errors";
 
 export default function ProjectSettingsModal({
@@ -18,7 +25,7 @@ export default function ProjectSettingsModal({
   const app = useApp();
   const project = app.getProject();
   const { confirm } = useConfirmation();
-  const deleteProject = useEditorMutation(api.editor.deleteProject);
+  const deleteProject = useMutation(api.editor.deleteProject);
   const onApiError = useApiErrorHandler();
   const [isDeleting, setIsDeleting] = useState(false);
 

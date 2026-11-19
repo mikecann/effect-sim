@@ -1,3 +1,4 @@
+import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { notifications } from "@mantine/notifications";
 import { reaction } from "mobx";
@@ -6,7 +7,6 @@ import type { ProjectModel } from "../../../../shared/models/ProjectModel";
 import type { Doc } from "../../../../convex/_generated/dataModel";
 import { useApp } from "../../AppContext";
 import { usePersistedQuery } from "../../hooks/usePersistedQuery";
-import { useEditorMutation } from "../../auth/useEditorMutation";
 import { ProjectSyncModel } from "./ProjectSyncModel";
 import { useSwitchReporter } from "./useSwitchReporter";
 
@@ -24,7 +24,7 @@ export const ProjectSyncer = ({
   serverDoc: Doc<"projects"> | null;
 }) => {
   const app = useApp();
-  const sync = useEditorMutation(api.editor.sync);
+  const sync = useMutation(api.editor.sync);
   const [model] = useState(
     () =>
       new ProjectSyncModel(project, (changes) =>
@@ -33,10 +33,9 @@ export const ProjectSyncer = ({
   );
   useSwitchReporter(project);
 
-  const { data, isStale } = usePersistedQuery(
-    api.functions.getDataForProject,
-    { projectId: project._id },
-  );
+  const { data, isStale } = usePersistedQuery(api.functions.getDataForProject, {
+    projectId: project._id,
+  });
 
   useEffect(() => {
     model.start();

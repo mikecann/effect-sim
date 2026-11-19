@@ -374,13 +374,6 @@ export const purgeSwitchState = machines.internalMutation({
   },
 });
 
-/** Checks the editor's token (its token modal calls this before keeping one). */
-export const checkToken = editorMutation({
-  args: {},
-  returns: v.null(),
-  handler: async () => null,
-});
-
 /** Makes a project, with no nodes, sequences or playlists yet. */
 export const createProject = editorMutation({
   args: { name: v.string() },

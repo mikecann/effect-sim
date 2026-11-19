@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { MutationBuilder } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import { machines } from "./machines";
+import { currentEditor } from "./editors";
 import { authAs, roleForToken, type Role } from "./roles";
 
 // The mutation builders every public mutation uses (see convex/roles.ts for
@@ -19,12 +20,20 @@ const machineMutation = machines.mutation as unknown as MutationBuilder<
   "public"
 >;
 
-/** A mutation builder that takes `token` and lets in only these roles. */
+/**
+ * A mutation builder that lets in only these roles: by `token`, or, where the
+ * editor is allowed, an editor signed in with Google (convex/editors.ts). A
+ * token, when sent, is always checked, even from a signed-in editor.
+ */
 export const roleMutation = (...allowed: [Role, ...Role[]]) =>
   customMutation(machineMutation, {
     args: { token: v.optional(v.string()) },
     input: async (ctx, { token }) => {
-      const role = roleForToken(allowed, token);
+      const signedIn =
+        token === undefined &&
+        allowed.includes("editor") &&
+        (await currentEditor(ctx)) !== null;
+      const role = signedIn ? "editor" : roleForToken(allowed, token);
       return { ctx: { role, auth: authAs(ctx.auth, role) }, args: {} };
     },
   });

@@ -1,7 +1,7 @@
+import { useMutation } from "convex/react";
 import { useEffect } from "react";
 import { api } from "../../../../convex/_generated/api";
 import type { ProjectModel } from "../../../../shared/models/ProjectModel";
-import { useEditorMutation } from "../../auth/useEditorMutation";
 
 /**
  * When the editor switches a plug (the switch inspector, or a sequence
@@ -9,9 +9,9 @@ import { useEditorMutation } from "../../auth/useEditorMutation";
  * sees the plug's state (convex/switches.ts).
  */
 export const useSwitchReporter = (project: ProjectModel) => {
-  const switching = useEditorMutation(api.switches.switching);
-  const turned = useEditorMutation(api.switches.turned);
-  const failed = useEditorMutation(api.switches.failed);
+  const switching = useMutation(api.switches.switching);
+  const turned = useMutation(api.switches.turned);
+  const failed = useMutation(api.switches.failed);
 
   useEffect(() => {
     const projectId = project._id;

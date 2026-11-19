@@ -1,9 +1,9 @@
+import { useMutation } from "convex/react";
 import { useState } from "react";
 import { Button, Modal, Stack, TextInput } from "@mantine/core";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { api } from "../../../convex/_generated/api";
 import { useApiErrorHandler } from "../errors";
-import { useEditorMutation } from "../auth/useEditorMutation";
 
 export default function NewProjectModal({
   opened,
@@ -17,7 +17,7 @@ export default function NewProjectModal({
   const [name, setName] = useState("My Project");
   const [isSaving, setIsSaving] = useState(false);
   const onApiError = useApiErrorHandler();
-  const createProject = useEditorMutation(api.editor.createProject);
+  const createProject = useMutation(api.editor.createProject);
 
   const save = async () => {
     if (isSaving || !name.trim()) return;
@@ -33,7 +33,12 @@ export default function NewProjectModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Create New Project" size="sm">
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Create New Project"
+      size="sm"
+    >
       <Stack gap="sm">
         <TextInput
           label="Project Name"

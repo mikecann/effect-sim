@@ -4,6 +4,8 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { DatabaseReader } from "./_generated/server";
 import { editorMutation, hwirMutation } from "./auth";
+import { currentEditor } from "./editors";
+import { tokensRequired } from "./roles";
 import { GATED_PATTERN_KINDS } from "../shared/mapping/ledCodes";
 import { displayControl, machines, mappingSession } from "./machines";
 import {
@@ -412,10 +414,15 @@ export const cleanUpPhotos = machines.internalMutation({
   },
 });
 
-/** A session's camera views, with URLs for their photos. */
+/**
+ * A session's camera views, with URLs for their photos. The photos are of the
+ * house, so only a signed-in editor gets them (anyone, where tokens aren't
+ * required yet).
+ */
 export const views = query({
   args: sessionArgs,
   handler: async (ctx, { sessionId }) => {
+    if (tokensRequired() && !(await currentEditor(ctx))) return null;
     const row = await ctx.db.get("mappingSessions", sessionId);
     if (!row) return null;
     return await Promise.all(

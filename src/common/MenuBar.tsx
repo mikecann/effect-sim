@@ -15,6 +15,7 @@ import ProjectSettingsModal from "./projects/ProjectSettingsModal";
 import { HardwareInterfaceStatus } from "./hardware-interface/HardwareInterfaceStatus";
 import { SaveStatus } from "./SaveStatus";
 import { LightsStatus } from "./hardware-interface/LightsStatus";
+import { SignOutMenuItem } from "./auth/SignOutMenuItem";
 
 export default function MenuBar() {
   const app = useApp();
@@ -47,7 +48,7 @@ export default function MenuBar() {
               🌈 Effect Sim
             </Text>
 
-            <Menu shadow="md" width={160}>
+            <Menu shadow="md" width={260}>
               <Menu.Target>
                 <Text size="sm" style={{ cursor: "pointer" }}>
                   File
@@ -60,6 +61,7 @@ export default function MenuBar() {
                 <Menu.Item onClick={() => setShowOpenProjectModal(true)}>
                   Open Project
                 </Menu.Item>
+                <SignOutMenuItem />
               </Menu.Dropdown>
             </Menu>
 

@@ -14,6 +14,7 @@ import type * as display from "../display.js";
 import type * as displayControl from "../displayControl.js";
 import type * as editor from "../editor.js";
 import type * as editorSync from "../editorSync.js";
+import type * as editors from "../editors.js";
 import type * as functions from "../functions.js";
 import type * as hwir from "../hwir.js";
 import type * as hwirPresence from "../hwirPresence.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   displayControl: typeof displayControl;
   editor: typeof editor;
   editorSync: typeof editorSync;
+  editors: typeof editors;
   functions: typeof functions;
   hwir: typeof hwir;
   hwirPresence: typeof hwirPresence;
@@ -80,4 +82,6 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   stateMachines: import("@convex-dev/state-machines/_generated/component.js").ComponentApi<"stateMachines">;
+  auth: import("@convex-dev/auth/_generated/component.js").ComponentApi<"auth">;
+  authGoogle: import("@convex-dev/auth/components/google/_generated/component.js").ComponentApi<"authGoogle">;
 };
