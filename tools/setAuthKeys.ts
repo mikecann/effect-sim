@@ -1,7 +1,10 @@
 /**
  * Puts Convex Auth's signing keys (AUTH_PRIVATE_KEY, AUTH_JWKS) on a deployment, for the editor's
  * Google sign-in (convex/editors.ts). Skips if they're already set; --force makes new
- * ones, which signs everyone out. Nothing secret is printed.
+ * ones. That does NOT sign anyone out: a session's refresh token keeps working
+ * and gets new tokens signed with the new key. To lock someone out, take their
+ * address off EDITOR_EMAILS, which is checked on every call. Nothing secret is
+ * printed.
  *
  * Usage: bun tools/setAuthKeys.ts [--prod] [--force]
  */
@@ -12,21 +15,34 @@ const prod = Bun.argv.includes("--prod");
 const force = Bun.argv.includes("--force");
 const where = prod ? "production" : "dev";
 const convexEnv = (args: string[]) =>
-  spawnSync("bunx", ["convex", "env", ...args, ...(prod ? ["--prod"] : [])], { encoding: "utf8" });
+  spawnSync("bunx", ["convex", "env", ...args, ...(prod ? ["--prod"] : [])], {
+    encoding: "utf8",
+  });
 
 const existing = convexEnv(["get", "AUTH_JWKS"]);
 if (!force && existing.status === 0 && existing.stdout.trim().length > 0) {
-  console.log(`AUTH_PRIVATE_KEY and AUTH_JWKS are already set on ${where}, left unchanged.`);
+  console.log(
+    `AUTH_PRIVATE_KEY and AUTH_JWKS are already set on ${where}, left unchanged.`,
+  );
   process.exit(0);
 }
 
-const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+});
 const keys = {
-  AUTH_PRIVATE_KEY: Buffer.from(privateKey.export({ type: "pkcs8", format: "pem" })).toString(
-    "base64",
-  ),
+  AUTH_PRIVATE_KEY: Buffer.from(
+    privateKey.export({ type: "pkcs8", format: "pem" }),
+  ).toString("base64"),
   AUTH_JWKS: JSON.stringify({
-    keys: [{ ...publicKey.export({ format: "jwk" }), kid: randomUUID(), alg: "RS256", use: "sig" }],
+    keys: [
+      {
+        ...publicKey.export({ format: "jwk" }),
+        kid: randomUUID(),
+        alg: "RS256",
+        use: "sig",
+      },
+    ],
   }),
 };
 for (const [name, value] of Object.entries(keys)) {

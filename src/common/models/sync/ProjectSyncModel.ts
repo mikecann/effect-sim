@@ -156,6 +156,20 @@ export class ProjectSyncModel {
     await this.drainOutbox();
   }
 
+  /**
+   * Sends whatever's unsaved and waits for the server to have it. False if
+   * it's still unsaved after `timeoutMs` (offline, or the server refused it).
+   */
+  async saveNow(timeoutMs = 10_000): Promise<boolean> {
+    this.flush();
+    const deadline = Date.now() + timeoutMs;
+    while (this.hasUnsavedChanges()) {
+      if (Date.now() > deadline || this.status.kind === "error") return false;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return true;
+  }
+
   /** Whether some edit hasn't reached the server yet. */
   hasUnsavedChanges(): boolean {
     return this.inFlight !== null || this.computeChanges().length > 0;

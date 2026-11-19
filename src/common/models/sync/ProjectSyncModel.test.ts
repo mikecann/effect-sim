@@ -122,6 +122,33 @@ describe("ProjectSyncModel", () => {
     expect(sync.hasUnsavedChanges()).toBe(false);
   });
 
+  it("saveNow sends without waiting for the debounce and resolves once saved", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("A1");
+    let saved: boolean | undefined;
+    void sync.saveNow().then((result) => (saved = result));
+    await tick(0);
+    expect(calls).toHaveLength(1);
+    expect(saved).toBeUndefined();
+    calls[0]?.resolve(ok(1));
+    await tick(200);
+    expect(saved).toBe(true);
+  });
+
+  it("saveNow gives up when the save doesn't land", async () => {
+    const { project, sync, calls } = setup();
+    const a = project.findNode("a");
+    if (a?.kind !== "folder") throw new Error("no a");
+    a.setLabel("A1");
+    let saved: boolean | undefined;
+    void sync.saveNow(1_000).then((result) => (saved = result));
+    await tick(1_200);
+    expect(calls).toHaveLength(1);
+    expect(saved).toBe(false);
+  });
+
   it("takes server changes to rows with no unsaved edits, and keeps unsaved ones", async () => {
     const { project, sync, label } = setup();
     const a = project.findNode("a");
