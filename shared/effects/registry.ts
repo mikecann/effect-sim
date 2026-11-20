@@ -5,6 +5,7 @@ import { bouncingComet } from "./string/bouncingComet";
 import { comet } from "./string/comet";
 import { cycleSine } from "./string/cycleSine";
 import { fadeTo } from "./string/fadeTo";
+import { fillDark } from "./string/fillDark";
 import { fire } from "./string/fire";
 import { fireflies } from "./string/fireflies";
 import { fireworks } from "./string/fireworks";
@@ -49,6 +50,7 @@ export const stringEffects = [
   bouncingBalls,
   wipe,
   radialPulse,
+  fillDark,
 ] as const satisfies ReadonlyArray<StringEffect>;
 
 export const switchEffects = [
