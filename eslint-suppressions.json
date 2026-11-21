@@ -1,6 +1,21 @@
 {
+  "hardware-interface-runtime/hooks.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    }
+  },
+  "shared/models/SwitchNodeModel.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
   "src/common/AppContext.tsx": {
     "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/common/MenuBar.tsx": {
+    "@typescript-eslint/no-floating-promises": {
       "count": 1
     }
   },
@@ -9,18 +24,79 @@
       "count": 1
     }
   },
+  "src/common/hooks/usePersistedQuery.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 2
+    }
+  },
+  "src/common/models/AppModel.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/common/models/FlexLayoutModel.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/common/models/HardwareInterfaceRuntimeModel.ts": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/common/models/sync/useSwitchReporter.ts": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 3
+    }
+  },
+  "src/common/projects/NewProjectModal.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
+  "src/common/projects/ProjectSettingsModal.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
   "src/common/utils/frames.ts": {
     "react-hooks/exhaustive-deps": {
       "count": 1
     }
   },
+  "src/inspector/switch/SwitchControlsSection.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
   "src/nodesTree/NodesTreeDeleteAction.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
     "mikecann-lint/click-shows-progress": {
       "count": 1
     }
   },
+  "src/nodesTree/NodesTreePanel.tsx": {
+    "@typescript-eslint/no-floating-promises": {
+      "count": 1
+    }
+  },
+  "src/playlists/PlaylistRow.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    }
+  },
   "src/sequencer/inspector/track/TrackInspector.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
     "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/sequencer/models/SequencerPanelUIModel.ts": {
+    "@typescript-eslint/no-floating-promises": {
       "count": 1
     }
   },
@@ -30,12 +106,23 @@
     }
   },
   "src/sequencer/toolbar/EditSequenceModal.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
     "mikecann-lint/click-shows-progress": {
       "count": 1
     }
   },
   "src/sequencer/tracks/TracksColumn/TrackListItem.tsx": {
+    "@typescript-eslint/no-misused-promises": {
+      "count": 1
+    },
     "mikecann-lint/click-shows-progress": {
+      "count": 1
+    }
+  },
+  "src/sequencer/tracks/TracksColumn/useDeleteTrackShortcut.ts": {
+    "@typescript-eslint/no-floating-promises": {
       "count": 1
     }
   },
