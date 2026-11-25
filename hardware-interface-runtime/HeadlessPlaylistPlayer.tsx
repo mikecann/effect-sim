@@ -6,6 +6,11 @@ import { useFrame } from "../src/common/utils/frames";
 import { HeadlessPlayerModel } from "./models/HeadlessPlayerModel";
 import type { HWIRAppModel } from "./models/HWIRAppModel";
 import { RenderStamp } from "./RenderStamp";
+import { useLedData } from "../src/data/LedDataStoreContext";
+import { DEFAULT_FRAMERATE } from "../src/common/projects/projectConstants";
+
+/** How long one sequence fades into the next, so a change isn't a hard cut. */
+const CROSSFADE_SECONDS = 1;
 
 /**
  * Plays the display's playlist (or single sequence). Edits to the playlist
@@ -35,8 +40,17 @@ export const HeadlessPlaylistPlayer = observer(
       player.setPlaylist(playlist);
     }, [player, playlist]);
 
+    const ledData = useLedData();
     useFrame(() => {
+      const before = player.runtime;
       player.advanceFrame();
+      // Moved on to another sequence: the LEDs still hold the old one's last
+      // frame (the new one's effects haven't drawn yet), so fade from that.
+      if (before && player.runtime && player.runtime !== before) {
+        const fps =
+          app.project?.settings.defaultFramerate ?? DEFAULT_FRAMERATE;
+        app.crossfade.begin(ledData.strings, CROSSFADE_SECONDS * fps);
+      }
     });
 
     // An empty playlist: nothing to draw, so there's nothing to wait for.

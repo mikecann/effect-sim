@@ -9,6 +9,7 @@ import type { DisplaySettings } from "../../convex/schema";
 import type { StringLink } from "../strings/StringLink";
 import { FpsMeter } from "../frames/FrameClock";
 import type { PlugStatus } from "../display/plug";
+import { Crossfade } from "./Crossfade";
 
 export class HWIRAppModel {
   project: ProjectModel | null = null;
@@ -30,6 +31,9 @@ export class HWIRAppModel {
   /** Frames really run per second, for the heartbeat. */
   readonly fpsMeter = new FpsMeter();
 
+  /** Fades one playlist sequence into the next (the player starts it, the dispatcher mixes). */
+  readonly crossfade = new Crossfade();
+
   /** How the display's plug is doing (display/plug.ts), for the heartbeat. */
   plugStatus: () => PlugStatus | null = () => null;
 
@@ -48,6 +52,7 @@ export class HWIRAppModel {
     >(this, {
       links: false,
       fpsMeter: false,
+      crossfade: false,
       plugStatus: false,
       // Plain bookkeeping read from frames, not rendered.
       shownVersion: false,

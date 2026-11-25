@@ -4,27 +4,29 @@ import { HWIRAppModel } from "./models/HWIRAppModel";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 
-const scale = (
-  data: Uint8Array,
-  factor: number,
+const bufferFor = (
   buffers: Map<string, Uint8Array>,
   key: string,
+  length: number,
 ) => {
   let out = buffers.get(key);
-  if (!out || out.length !== data.length) {
-    out = new Uint8Array(data.length);
+  if (!out || out.length !== length) {
+    out = new Uint8Array(length);
     buffers.set(key, out);
   }
-  for (let i = 0; i < data.length; i++) out[i] = data[i] * factor;
   return out;
 };
 
-/** Each frame, sends what the effects drew to every string, dimmed by the display's brightness. */
+/**
+ * Each frame, sends what the effects drew to every string, dimmed by the
+ * display's brightness and mixed with the last sequence while one fades
+ * into the next (app.crossfade).
+ */
 export const HeadlessLedDataDispatcher = observer(
   ({ app }: { app: HWIRAppModel }) => {
     const ledDataStore = useLedData();
-    // One reusable buffer per string for dimmed frames, so dimming doesn't
-    // allocate every frame.
+    // One reusable buffer per string for dimmed or mixed frames, so they
+    // don't allocate every frame.
     const [scaled] = useState(() => new Map<string, Uint8Array>());
 
     // The display settings this tree was rendered with. When nothing plays
@@ -41,15 +43,18 @@ export const HeadlessLedDataDispatcher = observer(
       // Off is brightness 0: keep sending black frames, as WLED goes back to
       // its own effect a few seconds after DDP data stops.
       const factor = app.isOn ? app.brightness : 0;
+      const fade = app.crossfade;
       for (const [key, stringData] of ledDataStore.stringsMap) {
         const link = app.links.get(key);
         if (!link) continue;
+        const data = stringData.data;
         void link.send(
-          factor >= 1
-            ? stringData.data
-            : scale(stringData.data, factor, scaled, key),
+          factor >= 1 && !fade.active
+            ? data
+            : fade.mix(key, data, factor, bufferFor(scaled, key, data.length)),
         );
       }
+      fade.frameSent();
       const r = rendered.current;
       app.frameShown(r.selfRendered ? r.version : app.lastRendered());
     });
